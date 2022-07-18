@@ -1,9 +1,10 @@
 <?php
 
-namespace fuli\commons\provider\upload\handler;
+namespace Fize\Provider\Upload\Handler;
 
 use Exception;
-use fuli\commons\provider\upload\UploadHandler;
+use Fize\Provider\Upload\UploadAbstract;
+use Fize\Provider\Upload\UploadHandler;
 use fuli\commons\util\crypt\Json;
 use fuli\commons\util\io\File as Fso;
 use fuli\commons\util\net\Http;
@@ -17,7 +18,7 @@ use think\file\UploadedFile;
 /**
  * 华为云OBS
  */
-class HuaWei extends Common implements UploadHandler
+class HuaWei extends UploadAbstract implements UploadHandler
 {
 
     /**

@@ -1,8 +1,7 @@
 <?php
 
-namespace fuli\commons\provider\upload;
+namespace Fize\Provider\Upload;
 
-use think\facade\Config;
 
 /**
  * 文件上传
@@ -20,7 +19,7 @@ class Upload
      * @param string|null $handler 使用的实际接口名称
      * @return UploadHandler
      */
-    public static function getInstance(string $handler = null): UploadHandler
+    public static function getInstance(string $handler): UploadHandler
     {
         if (!$handler) {
             $handler = Config::get('provider.upload.handler');

@@ -14,12 +14,11 @@
     }
   },
   "require": {
-    "php": ">=7.1.0"
+    "php": ">=7.1.0",
+    "fize/image": "^2.0.0",
+    "fize/io": "^7.0.1"
   },
   "suggest": {
-    "alibabacloud/client": "^1.5.31",
-    "obs/esdk-obs-php": "^3.21.6",
-    "qiniu/php-sdk": "^7.4.0",
   },
   "autoload-dev": {
     "psr-4": {
@@ -27,6 +26,10 @@
     }
   },
   "require-dev": {
-    "phpunit/phpunit": "^9.5.0"
+    "aliyuncs/oss-sdk-php": "^2.5.0",
+    "obs/esdk-obs-php": "^3.21.6",
+    "fize/third-pingan": "^0.1.0",
+    "phpunit/phpunit": "^9.5.0",
+    "qiniu/php-sdk": "^7.4.0"
   }
 }

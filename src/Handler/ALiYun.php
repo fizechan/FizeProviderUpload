@@ -1,31 +1,35 @@
 <?php
 
-
 namespace Fize\Provider\Upload\Handler;
 
 use Exception;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
-use fuli\commons\third\qiNiu\ResumeUploaderV1;
-use fuli\commons\third\qiNiu\ResumeUploaderV2;
+use fuli\commons\util\crypt\Json;
 use fuli\commons\util\io\File as Fso;
 use fuli\commons\util\net\Http;
-use Qiniu\Auth;
-use Qiniu\Storage\BucketManager;
-use Qiniu\Storage\UploadManager;
+use OSS\OssClient;
 use think\exception\FileException;
-use think\facade\Cache;
 use think\facade\Config;
 use think\facade\Request;
 use think\File;
 use think\file\UploadedFile;
 
-
 /**
- * 七牛方式上传文件
+ * 阿里云OSS
  */
-class QiNiu extends UploadAbstract implements UploadHandler
+class ALiYun extends UploadAbstract implements UploadHandler
 {
+
+    /**
+     * @var OssClient OSS对象
+     */
+    protected $ossClient;
+
+    /**
+     * @var string 记录上传临时信息所用的文件名前缀
+     */
+    protected $tempPre = 'aliyun_';
 
     /**
      * 初始化
@@ -35,13 +39,15 @@ class QiNiu extends UploadAbstract implements UploadHandler
      */
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null)
     {
-        $this->cfg = array_merge(Config::get('third.QiNiu.upload'), $cfg);
+        $this->cfg = array_merge(Config::get('third.ALiYun.upload'), $cfg);
         $this->providerCfg = array_merge(Config::get('provider.upload'), $providerCfg);
 
         if (is_null($tempDir)) {
             $tempDir = Config::get('filesystem.disks.temp.root') . '/uploads';
         }
         $this->tempDir = $tempDir;
+
+        $this->ossClient = new OssClient($this->cfg['accessKeyId'], $this->cfg['accessKeySecret'], $this->cfg['endpoint']);
     }
 
     /**
@@ -104,7 +110,7 @@ class QiNiu extends UploadAbstract implements UploadHandler
         }
 
         $save_name = uniqid() . '.' . $extension;
-        $save_file = $this->tempDir . '/' . $save_name;  // 因为会上传到OBS，故放在临时文件夹中待后面上传后删除
+        $save_file = $this->tempDir . '/' . $save_name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
         $fso = new Fso($save_file, true, true, 'w');
         $result = $fso->write(base64_decode(str_replace($matches[1], '', $base64_centent)));
         $size = $fso->getInfo('size');
@@ -124,12 +130,8 @@ class QiNiu extends UploadAbstract implements UploadHandler
         $domain = $this->cfg['domain'];
         $url = $domain . '/' . $file_key;
 
-        $token = $this->getUploadToken();
-        $uploadMgr = new UploadManager();
-        [$ret, $err] = $uploadMgr->putFile($token, $file_key, $save_file, null, 'application/octet-stream', false, null, $this->cfg['version']);
-        if ($err !== null) {
-            throw new FileException($err);
-        }
+        $this->ossClient->uploadFile($this->cfg['bucket'], $file_key, $save_file);
+
         $data = [
             'url'          => $url,
             'path'         => $path,
@@ -138,11 +140,11 @@ class QiNiu extends UploadAbstract implements UploadHandler
             'image_height' => $imageheight,
             'file_size'    => $size,
             'mime_type'    => $mime,
-            'storage'      => 'QiNiu',
+            'storage'      => 'ALiYun',
             'sha1'         => hash_file('sha1', $save_file),
-            'extend'       => $ret  // 额外信息
+            'extend'       => []
         ];
-        unlink($save_file);  // 已上传到OBS，删除本地文件
+        unlink($save_file);  // 已上传到OSS，删除本地文件
         return $data;
     }
 
@@ -175,12 +177,7 @@ class QiNiu extends UploadAbstract implements UploadHandler
         $domain = $this->cfg['domain'];
         $url = $domain . '/' . $file_key;
 
-        $token = $this->getUploadToken();
-        $uploadMgr = new UploadManager();
-        [$ret, $err] = $uploadMgr->putFile($token, $file_key, $file_path, null, 'application/octet-stream', false, null, $this->cfg['version']);
-        if ($err !== null) {
-            throw new FileException($err);
-        }
+        $this->ossClient->uploadFile($this->cfg['bucket'], $file_key, $file_path);
 
         $data = [
             'original_name' => basename($file_path),
@@ -191,9 +188,9 @@ class QiNiu extends UploadAbstract implements UploadHandler
             'image_height'  => $imageheight,
             'file_size'     => $file->getInfo('size'),
             'mime_type'     => $file->getMime(),
-            'storage'       => 'QiNiu',
+            'storage'       => 'ALiYun',
             'sha1'          => hash_file('sha1', $file_path),
-            'extend'        => $ret  // 额外信息
+            'extend'        => []
         ];
         return $data;
     }
@@ -221,7 +218,7 @@ class QiNiu extends UploadAbstract implements UploadHandler
         } else {
             $save_name = uniqid();
         }
-        $save_file = $this->tempDir . '/' . $save_name;  // 因为会上传到OBS，故放在临时文件夹中待后面上传后删除
+        $save_file = $this->tempDir . '/' . $save_name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
 
         $http = new Http();
         $content = $http->get($url);
@@ -236,7 +233,7 @@ class QiNiu extends UploadAbstract implements UploadHandler
         }
         $fso->close();
         $data = $this->uploadFile($save_file, $type, $file_key);
-        unlink($save_file);  // 已上传到OBS，删除本地文件
+        unlink($save_file);  // 已上传到OSS，删除本地文件
         unset($data['original_name']);
         $data['original_url'] = $original_url;
         return $data;
@@ -294,19 +291,16 @@ class QiNiu extends UploadAbstract implements UploadHandler
         // 结束
         $this->uploadLargeComplete($file_key);
 
-        $auth = new Auth($this->cfg['accessKey'], $this->cfg['secretKey']);
-        $bm = new BucketManager($auth);
-        [$stat, $err] = $bm->stat($this->cfg['bucket'], $file_key);
-        if ($err !== null) {
-            throw new FileException($err);
-        }
+        $stat = $this->ossClient->getObjectMeta($this->cfg['bucket'], $file_key);
+
         // 没指定后缀名的情况下进行后缀名猜测并重命名该文件
         if (empty($extension)) {
-            $extension = Fso::getExtensionFromMime($stat['mimeType']);
+            $extension = Fso::getExtensionFromMime($stat['Content-Type']);
             if ($extension) {
                 $old_file_key = $file_key;
                 $file_key = $file_key . '.' . $extension;
-                $bm->rename($this->cfg['bucket'], $old_file_key, $file_key);
+                $this->ossClient->copyObject($this->cfg['bucket'], $old_file_key, $this->cfg['bucket'], $file_key);
+                $this->ossClient->deleteObject($this->cfg['bucket'], $old_file_key);
             }
         }
 
@@ -318,10 +312,10 @@ class QiNiu extends UploadAbstract implements UploadHandler
             'url'       => $url,
             'path'      => $path,
             'extension' => $extension,
-            'file_size' => $stat['fsize'],
-            'mime_type' => $stat['mimeType'],
-            'storage'   => 'QiNiu',
-            'sha1'      => $stat['hash'],
+            'file_size' => $stat['Content-Length'],
+            'mime_type' => $stat['Content-Type'],
+            'storage'   => 'AliYun',
+            'sha1'      => $stat['ETag'],
             'extend'    => $stat
         ];
         return $data;
@@ -357,19 +351,16 @@ class QiNiu extends UploadAbstract implements UploadHandler
         }
         $this->uploadLargeComplete($file_key);
 
-        $auth = new Auth($this->cfg['accessKey'], $this->cfg['secretKey']);
-        $bm = new BucketManager($auth);
-        [$stat, $err] = $bm->stat($this->cfg['bucket'], $file_key);
-        if ($err !== null) {
-            throw new FileException($err);
-        }
+        $stat = $this->ossClient->getObjectMeta($this->cfg['bucket'], $file_key);
+
         // 没指定后缀名的情况下进行后缀名猜测并重命名该文件
         if (is_null($extension)) {
-            $extension = Fso::getExtensionFromMime($stat['mimeType']);
+            $extension = Fso::getExtensionFromMime($stat['Content-Type']);
             if ($extension) {
                 $old_file_key = $file_key;
                 $file_key = $file_key . '.' . $extension;
-                $bm->rename($this->cfg['bucket'], $old_file_key, $file_key);
+                $this->ossClient->copyObject($this->cfg['bucket'], $old_file_key, $this->cfg['bucket'], $file_key);
+                $this->ossClient->deleteObject($this->cfg['bucket'], $old_file_key);
             }
         }
 
@@ -381,10 +372,10 @@ class QiNiu extends UploadAbstract implements UploadHandler
             'url'       => $url,
             'path'      => $path,
             'extension' => $extension,
-            'file_size' => $stat['fsize'],
-            'mime_type' => $stat['mimeType'],
-            'storage'   => 'QiNiu',
-            'sha1'      => $stat['hash'],
+            'file_size' => $stat['Content-Length'],
+            'mime_type' => $stat['Content-Type'],
+            'storage'   => 'ALiYun',
+            'sha1'      => $stat['ETag'],
             'extend'    => $stat
         ];
         return $data;
@@ -403,11 +394,10 @@ class QiNiu extends UploadAbstract implements UploadHandler
             $sdir = $this->getSaveDir($type);
             $file_key = $sdir . '/' . $save_name;
         }
-        $upToken = $this->getUploadToken();
-        if ($this->cfg['version'] == 'v2') {
-            $up2 = new ResumeUploaderV2($upToken, $file_key, $this->tempDir);
-            $up2->initiateMultipartUpload();
-        }
+
+        $uploadId = $this->ossClient->initiateMultipartUpload( $this->cfg['bucket'], $file_key);
+        $this->savePartUploadInfo($file_key, ['uploadId' => $uploadId]);
+
         return $file_key;
     }
 
@@ -418,14 +408,25 @@ class QiNiu extends UploadAbstract implements UploadHandler
      */
     public function uploadLargePart(string $file_key, string $content)
     {
-        $upToken = $this->getUploadToken();
-        if ($this->cfg['version'] == 'v1') {
-            $up1 = new ResumeUploaderV1($upToken, $file_key, $this->tempDir);
-            $up1->mkblk($content);
+        $info = $this->getPartUploadInfo($file_key);
+        $this->assertHasKey($info, 'uploadId');
+        if (isset($info['ETags'])) {
+            $partNumber = (end($info['ETags']))['PartNumber'] + 1;
         } else {
-            $up2 = new ResumeUploaderV2($upToken, $file_key, $this->tempDir);
-            $up2->uploadPart($content);
+            $partNumber = 1;
         }
+
+        $upOptions = [
+            // 上传文件。
+            OssClient::OSS_CONTENT => $content,
+            // 设置分片号。
+            OssClient::OSS_PART_NUM => $partNumber,
+        ];
+        $eTag = $this->ossClient->uploadPart($this->cfg['bucket'], $file_key, $info['uploadId'], $upOptions);
+        $blockStatus = ['ETag' => $eTag, 'PartNumber' => $partNumber];
+        $etags = $info['ETags'] ?? [];
+        $etags[] = $blockStatus;
+        $this->savePartUploadInfo($file_key, ['ETags' => $etags]);
     }
 
     /**
@@ -437,19 +438,19 @@ class QiNiu extends UploadAbstract implements UploadHandler
      */
     public function uploadLargeComplete(string $file_key, string $fname = null, string $mimeType = null): array
     {
-        $upToken = $this->getUploadToken();
-        if ($this->cfg['version'] == 'v1') {
-            $up1 = new ResumeUploaderV1($upToken, $file_key, $this->tempDir);
-            $result = $up1->mkfile($fname, $mimeType);
-        } else {
-            $up2 = new ResumeUploaderV2($upToken, $file_key, $this->tempDir);
-            $result = $up2->completeMultipartUpload($fname, $mimeType);
-        }
+        $info = $this->getPartUploadInfo($file_key);
+        $this->assertHasKey($info, 'uploadId');
+        $this->assertHasKey($info, 'ETags');
+
+        $this->ossClient->completeMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId'], $info['ETags']);
+
+        $this->deletPartUploadInfo($file_key);
+
         return [
             'file_key' => $file_key,
             'fname'    => $fname,
             'mimeType' => $mimeType,
-            'extend'   => $result
+            'extend'   => []
         ];
     }
 
@@ -459,13 +460,12 @@ class QiNiu extends UploadAbstract implements UploadHandler
      */
     public function uploadLargeAbort(string $file_key)
     {
-        if ($this->cfg['version'] == 'v1') {
-            throw new Exception("七牛云分片上传v1版不支持终止上传！");
-        } else {
-            $upToken = $this->getUploadToken();
-            $up2 = new ResumeUploaderV2($upToken, $file_key, $this->tempDir);
-            $up2->abortMultipartUpload();
-        }
+        $info = $this->getPartUploadInfo($file_key);
+        $this->assertHasKey($info, 'uploadId');
+
+        $this->ossClient->abortMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId']);
+
+        $this->deletPartUploadInfo($file_key);
     }
 
     /**
@@ -477,12 +477,12 @@ class QiNiu extends UploadAbstract implements UploadHandler
     public function getPreviewUrl(string $url, int $expires = 0): string
     {
         if ($expires == 0) {
-            $expires = 100 * 365 * 24 * 3600;
+            $expires = 2592000;  // 最大支持30天
         }
-        $config = $this->cfg;
-        $auth = new Auth($config['accessKey'], $config['secretKey']);
-        if ($config['private']) {
-            $url = $auth->privateDownloadUrl($url, $expires);
+        if ($this->cfg['private']) {
+            $key = parse_url($url, PHP_URL_PATH);
+            $key = substr($key, 1);  // 删除第一个【/】
+            $url = $this->ossClient->signUrl($this->cfg['bucket'], $key, $expires);
         }
         return $url;
     }
@@ -520,7 +520,7 @@ class QiNiu extends UploadAbstract implements UploadHandler
         $originalName = $uploadFile->getOriginalName();
 
         $save_name = uniqid() . '.' . $extension;
-        $save_file = $this->tempDir . '/' . $save_name;  // 因为会上传到OBS，故放在临时文件夹中待后面上传后删除
+        $save_file = $this->tempDir . '/' . $save_name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
         $saveFile = new Fso($save_file, true);
         $saveFile->open('w');
         $saveFile->write(file_get_contents($uploadFile->getPathname()));
@@ -536,12 +536,8 @@ class QiNiu extends UploadAbstract implements UploadHandler
         $domain = $this->cfg['domain'];
         $url = $domain . '/' . $file_key;
 
-        $token = $this->getUploadToken();
-        $uploadMgr = new UploadManager();
-        [$ret, $err] = $uploadMgr->putFile($token, $file_key, $save_file, null, 'application/octet-stream', false, null, $this->cfg['version']);
-        if ($err !== null) {
-            throw new FileException($err);
-        }
+        $this->ossClient->uploadFile($this->cfg['bucket'], $file_key, $save_file);
+
         $data = [
             'original_name' => $originalName,
             'url'           => $url,
@@ -551,26 +547,79 @@ class QiNiu extends UploadAbstract implements UploadHandler
             'image_height'  => $imageheight,
             'file_size'     => $saveFile->getSize(),
             'mime_type'     => $saveFile->getMime(),
-            'storage'       => 'QiNiu',
+            'storage'       => 'ALiYun',
             'sha1'          => hash_file('sha1', $save_file),
-            'extend'        => $ret  // 额外信息
+            'extend'        => []
         ];
-        unlink($save_file);  // 已上传到OBS，删除本地文件
+        unlink($save_file);  // 已上传到OSS，删除本地文件
         return $data;
     }
 
     /**
-     * 获取上传TOKEN
-     * @return string
+     * 获取临时信息
+     * @param string $key 文件路径标识
+     * @return array
      */
-    protected function getUploadToken(): string
+    protected function getPartUploadInfo(string $key): array
     {
-        $key = $this->cfg['uploadToken']['cacheKey'];
-        if (!Cache::has($key)) {
-            $auth = new Auth($this->cfg['accessKey'], $this->cfg['secretKey']);
-            $token = $auth->uploadToken($this->cfg['bucket']);
-            Cache::set($key, $token, $this->cfg['uploadToken']['expires'] - 600);  // 提前10分钟失效，提高稳定性
+        $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        $file = new Fso($infoFile, true);
+        $file->open('r');
+        $content = $file->getContents();
+        if ($content) {
+            $content = Json::decode($content);
+        } else {
+            $content = [];
         }
-        return Cache::get($key);
+        $file->close();
+        return $content;
+    }
+
+    /**
+     * 保存临时信息
+     * @param string $key       文件路径标识
+     * @param array  $keyValues 键值对
+     */
+    protected function savePartUploadInfo(string $key, array $keyValues)
+    {
+        $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        $file = new Fso($infoFile, true);
+        $file->open('r');
+        $content = $file->getContents();
+        if ($content) {
+            $content = Json::decode($content);
+        } else {
+            $content = [];
+        }
+        $file->close();
+        $content = array_merge($content, $keyValues);
+        $content = Json::encode($content, JSON_UNESCAPED_UNICODE);
+        $file->open('w');
+        $file->lock(LOCK_EX);
+        $file->write($content);
+        $file->close();
+    }
+
+    /**
+     * 删除临时信息
+     * @param string $key 文件路径标识
+     */
+    protected function deletPartUploadInfo(string $key)
+    {
+        $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        unlink($infoFile);
+    }
+
+    /**
+     * 验证值是否存在
+     * @param array  $array 待验证值
+     * @param string $key   键名
+     * @throws Exception
+     */
+    protected function assertHasKey(array $array, string $key)
+    {
+        if (!isset($array[$key])) {
+            throw new Exception("缺少必要参数：$key");
+        }
     }
 }

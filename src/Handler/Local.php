@@ -1,8 +1,9 @@
 <?php
 
-namespace fuli\commons\provider\upload\handler;
+namespace Fize\Provider\Upload\Handler;
 
-use fuli\commons\provider\upload\UploadHandler;
+use Fize\Provider\Upload\UploadAbstract;
+use Fize\Provider\Upload\UploadHandler;
 use fuli\commons\util\io\File as Fso;
 use fuli\commons\util\net\Http;
 use think\exception\FileException;
@@ -16,7 +17,7 @@ use think\file\UploadedFile;
 /**
  * 本地方式上传文件
  */
-class Local extends Common implements UploadHandler
+class Local extends UploadAbstract implements UploadHandler
 {
 
     /**

@@ -1,9 +1,11 @@
 <?php
 
 
-namespace provider\upload\handler;
+namespace Fize\Provider\Upload\Handler;
 
 use Exception;
+use Fize\Provider\Upload\UploadAbstract;
+use Fize\Provider\Upload\UploadHandler;
 use provider\upload\Upload;
 use think\facade\Config;
 use think\facade\Env;
@@ -15,9 +17,8 @@ use third\pingan\api\Obs;
 
 /**
  * 平安OBS
- * @todo 待整理，存在显见BUG，请勿使用！
  */
-class PingAn extends Common
+class PingAn extends UploadAbstract implements UploadHandler
 {
 
     /**

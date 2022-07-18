@@ -1,6 +1,6 @@
 <?php
 
-namespace fuli\commons\provider\upload;
+namespace Fize\Provider\Upload;
 
 /**
  * 文件上传统一接口

@@ -1,13 +1,13 @@
 <?php
 
-namespace fuli\commons\provider\upload\handler;
+namespace Fize\Provider\Upload;
 
-use fuli\commons\util\image\Image;
+use Fize\Image\Image;
 
 /**
  * 上传基类
  */
-abstract class Common
+abstract class UploadAbstract
 {
 
     /**

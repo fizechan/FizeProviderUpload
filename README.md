@@ -1,8 +1,10 @@
 # FizeProviderUpload
+
 文件上传库。
 
-## 已支持以下供应方：
-- 本地存储(Local)
+## 除支持本地存储(Local)外，目前已支持以下平台：
+
 - 阿里云(ALiYun)
 - 华为云(HuaWei)
 - 平安云(PingAn)
+- 七牛云(QiNiu)
