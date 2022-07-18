@@ -1,0 +1,32 @@
+{
+  "name": "fize/provider-upload",
+  "description": "统一文件上传库。",
+  "authors": [
+    {
+      "name": "Fize",
+      "email": "chenfengzhan@qq.com"
+    }
+  ],
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "Fize\\Provider\\Upload\\": "src"
+    }
+  },
+  "require": {
+    "php": ">=7.1.0"
+  },
+  "suggest": {
+    "alibabacloud/client": "^1.5.31",
+    "obs/esdk-obs-php": "^3.21.6",
+    "qiniu/php-sdk": "^7.4.0",
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests"
+    }
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^9.5.0"
+  }
+}
