@@ -15,6 +15,7 @@
   },
   "require": {
     "php": ">=7.1.0",
+    "ext-json": "*",
     "fize/image": "^2.0.0",
     "fize/io": "^7.0.1"
   },
@@ -27,8 +28,8 @@
   },
   "require-dev": {
     "aliyuncs/oss-sdk-php": "^2.5.0",
-    "obs/esdk-obs-php": "^3.21.6",
     "fize/third-pingan": "^0.1.0",
+    "obs/esdk-obs-php": "^3.21.6",
     "phpunit/phpunit": "^9.5.0",
     "qiniu/php-sdk": "^7.4.0"
   }

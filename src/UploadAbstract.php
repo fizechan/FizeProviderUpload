@@ -2,7 +2,10 @@
 
 namespace Fize\Provider\Upload;
 
+use Exception;
+use Fize\Codec\Json;
 use Fize\Image\Image;
+use Fize\IO\File as Fso;
 
 /**
  * 上传基类
@@ -24,6 +27,11 @@ abstract class UploadAbstract
      * @var string 临时文件夹
      */
     protected $tempDir;
+
+    /**
+     * @var string 记录上传临时信息所用的文件名前缀
+     */
+    protected $tempPre = '';
 
     /**
      * 获取保存的文件夹路径部分
@@ -89,5 +97,73 @@ abstract class UploadAbstract
             $imageheight = $imgInfo[1] ?? null;
         }
         return [$imagewidth, $imageheight];
+    }
+
+    /**
+     * 获取临时信息
+     * @param string $key 文件路径标识
+     * @return array
+     */
+    protected function getPartUploadInfo(string $key): array
+    {
+        $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        $file = new Fso($infoFile, true);
+        $file->open('r');
+        $content = $file->getContents();
+        if ($content) {
+            $content = Json::decode($content);
+        } else {
+            $content = [];
+        }
+        $file->close();
+        return $content;
+    }
+
+    /**
+     * 保存临时信息
+     * @param string $key       文件路径标识
+     * @param array  $keyValues 键值对
+     */
+    protected function savePartUploadInfo(string $key, array $keyValues)
+    {
+        $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        $file = new Fso($infoFile, true);
+        $file->open('r');
+        $content = $file->getContents();
+        if ($content) {
+            $content = Json::decode($content);
+        } else {
+            $content = [];
+        }
+        $file->close();
+        $content = array_merge($content, $keyValues);
+        $content = Json::encode($content, JSON_UNESCAPED_UNICODE);
+        $file->open('w');
+        $file->lock(LOCK_EX);
+        $file->write($content);
+        $file->close();
+    }
+
+    /**
+     * 删除临时信息
+     * @param string $key 文件路径标识
+     */
+    protected function deletPartUploadInfo(string $key)
+    {
+        $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        unlink($infoFile);
+    }
+
+    /**
+     * 验证值是否存在
+     * @param array  $array 待验证值
+     * @param string $key   键名
+     * @throws Exception
+     */
+    protected function assertHasKey(array $array, string $key)
+    {
+        if (!isset($array[$key])) {
+            throw new Exception("缺少必要参数：$key");
+        }
     }
 }

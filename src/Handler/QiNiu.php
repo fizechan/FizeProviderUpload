@@ -4,12 +4,12 @@
 namespace Fize\Provider\Upload\Handler;
 
 use Exception;
+use Fize\Http\ClientSimple;
+use Fize\IO\File as Fso;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
 use fuli\commons\third\qiNiu\ResumeUploaderV1;
 use fuli\commons\third\qiNiu\ResumeUploaderV2;
-use fuli\commons\util\io\File as Fso;
-use fuli\commons\util\net\Http;
 use Qiniu\Auth;
 use Qiniu\Storage\BucketManager;
 use Qiniu\Storage\UploadManager;
