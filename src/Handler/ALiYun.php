@@ -516,11 +516,23 @@ class ALiYun extends UploadAbstract implements UploadHandler
         $this->ossClient->completeMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId'], $info['ETags']);
 
         $temp_file = $this->tempDir . '/' . $info['tempName'];
+        $tempFile = new Fso($temp_file);
+        $extension = pathinfo($file_key, PATHINFO_EXTENSION);
+        if (empty($extension) && $fname) {
+            $extension = pathinfo($fname, PATHINFO_EXTENSION);
+        }
+        if (empty($extension)) {
+            $extension = $tempFile->getExtensionPossible();
+        }
 
         $path = $file_key;
         $domain = $this->cfg['domain'];
         $url = $domain . '/' . $file_key;
         [$imagewidth, $imageheight] = $this->imageResize($temp_file, $extension);
+
+        $file_size = $tempFile->getInfo('size');
+        $file_mime = $tempFile->getMime();
+        $sha1 = hash_file('sha1', $temp_file);
 
         unlink($temp_file);
         $this->deletPartUploadInfo($file_key);
@@ -531,17 +543,13 @@ class ALiYun extends UploadAbstract implements UploadHandler
             'extension'    => $extension,
             'image_width'  => $imagewidth,
             'image_height' => $imageheight,
-            'file_size'    => $saveFile->getSize(),
-            'mime_type'    => $saveFile->getMime(),
+            'file_size'    => $file_size,
+            'mime_type'    => $file_mime,
             'storage'      => 'ALiYun',
-            'sha1'         => hash_file('sha1', $save_file),
-            'extend'       => [],
-
-
-            'file_key' => $file_key,
-            'fname'    => $fname,
-            'mimeType' => $mimeType,
-            'extend'   => []
+            'sha1'         => $sha1,
+            'extend'       => [
+                'fname' => $fname
+            ]
         ];
     }
 
