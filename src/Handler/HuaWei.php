@@ -4,16 +4,10 @@ namespace Fize\Provider\Upload\Handler;
 
 use Exception;
 use Fize\Codec\Json;
-use Fize\Http\ClientSimple;
-use Fize\IO\File as Fso;
+use Fize\IO\File;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
 use Obs\ObsClient;
-use think\exception\FileException;
-use think\facade\Config;
-use think\facade\Request;
-use think\File;
-use think\file\UploadedFile;
 
 /**
  * 华为云OBS

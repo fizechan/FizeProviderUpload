@@ -66,9 +66,9 @@ abstract class UploadAbstract
         $imagewidth = null;
         $imageheight = null;
         if (Extension::isImage($extension)) {
-            $imgInfo = getimagesize($file);
-            $imagewidth = $imgInfo[0] ?? null;
-            $imageheight = $imgInfo[1] ?? null;
+            $imgsize = getimagesize($file);
+            $imagewidth = $imgsize[0] ?? null;
+            $imageheight = $imgsize[1] ?? null;
             if ($imagewidth > $this->providerCfg['image_max_width'] && filesize($file) > $this->providerCfg['image_max_size']) {
                 $imageheight = (int)round($this->providerCfg['image_max_width'] * $imageheight / $imagewidth);
                 $imagewidth = $this->providerCfg['image_max_width'];
@@ -92,9 +92,9 @@ abstract class UploadAbstract
         $imagewidth = null;
         $imageheight = null;
         if (Extension::isImage($extension)) {
-            $imgInfo = getimagesize($file);
-            $imagewidth = $imgInfo[0] ?? null;
-            $imageheight = $imgInfo[1] ?? null;
+            $imgsize = getimagesize($file);
+            $imagewidth = $imgsize[0] ?? null;
+            $imageheight = $imgsize[1] ?? null;
         }
         return [$imagewidth, $imageheight];
     }
@@ -106,17 +106,16 @@ abstract class UploadAbstract
      */
     protected function getPartUploadInfo(string $key): array
     {
-        $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
-        if (!File::exists($infoFile)) {
+        $info_file = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        if (!File::exists($info_file)) {
             return [];
         }
-        $file = new File($infoFile, 'r');
+        $file = new File($info_file, 'r');
         $content = $file->getContents();
         if (!$content) {
             return [];
         }
-        $content = Json::decode($content);
-        return $content;
+        return Json::decode($content);
     }
 
     /**
@@ -129,8 +128,8 @@ abstract class UploadAbstract
         $content = $this->getPartUploadInfo($key);
         $content = array_merge($content, $keyValues);
         $content = Json::encode($content, JSON_UNESCAPED_UNICODE);
-        $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
-        $file = new File($infoFile, 'w');
+        $info_file = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        $file = new File($info_file, 'w');
         $file->flock(LOCK_EX);
         $file->fwrite($content);
     }
@@ -141,8 +140,8 @@ abstract class UploadAbstract
      */
     protected function deletPartUploadInfo(string $key)
     {
-        $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
-        unlink($infoFile);
+        $info_file = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        unlink($info_file);
     }
 
     /**
@@ -164,11 +163,11 @@ abstract class UploadAbstract
      */
     protected function initProviderCfg(array $providerCfg)
     {
-        $defConfig = [
+        $def_config = [
             'image_resize'    => true,  // 图片大小调整
             'image_max_width' => 1000,   // 图片宽度超过该值时进行调整
             'image_max_size'  => 2 * 1024 * 1024,  // 图片文件大小超过该值时进行调整
         ];
-        $this->providerCfg = array_merge($defConfig, $providerCfg);
+        $this->providerCfg = array_merge($def_config, $providerCfg);
     }
 }

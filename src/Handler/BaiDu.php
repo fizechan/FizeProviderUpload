@@ -104,6 +104,7 @@ class BaiDu extends UploadAbstract implements UploadHandler
      * 参数 `$file_key`：指定该参数后，参数 $type 无效
      * @param string      $base64_centent base64串
      * @param string|null $type           指定类型
+     *
      * @param string|null $file_key       文件路径标识
      * @return array 返回保存文件的相关信息
      */
@@ -123,7 +124,7 @@ class BaiDu extends UploadAbstract implements UploadHandler
         $save_file = $this->tempDir . DIRECTORY_SEPARATOR . $save_name;
         $fso = new File($save_file, 'w');
         $result = $fso->fwrite(base64_decode(str_replace($matches[1], '', $base64_centent)));
-        $fso->clearStatCache();
+        $fso->clearstatcache();
         $size = $fso->getSize();
 
         if ($result === false) {
@@ -368,7 +369,7 @@ class BaiDu extends UploadAbstract implements UploadHandler
         $this->bosClient->putSuperObjectFromFile($this->cfg['bucket'], $file_key, $temp_file, $options);
 
         $tempFile = new File($temp_file);
-        $tempFile->clearStatCache();
+        $tempFile->clearstatcache();
         $data = [
             'url'          => $url,
             'path'         => $path,
@@ -432,7 +433,7 @@ class BaiDu extends UploadAbstract implements UploadHandler
         $new_size = filesize($temp_file);
 
         $response = $this->bosClient->uploadPartFromFile($this->cfg['bucket'], $file_key, $info['uploadId'], $partNumber, $temp_file, $org_size, $new_size - $org_size);
-        $eTag = $response->metadata["etag"];
+        $eTag = $response->metadata['etag'];
         $blockStatus = ['eTag' => $eTag, 'partNumber' => $partNumber];
         $etags = $info['eTags'] ?? [];
         $etags[] = $blockStatus;

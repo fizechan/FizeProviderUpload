@@ -2,16 +2,10 @@
 
 namespace Fize\Provider\Upload\Handler;
 
+use Fize\IO\File;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
-use fuli\commons\util\io\File as Fso;
-use fuli\commons\util\net\Http;
 use OSS\OssClient;
-use think\exception\FileException;
-use think\facade\Config;
-use think\facade\Request;
-use think\File;
-use think\file\UploadedFile;
 
 /**
  * 阿里云OSS

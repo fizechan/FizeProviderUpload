@@ -23,7 +23,9 @@
   "suggest": {
   },
   "autoload-dev": {
-    "files": ["third/BaiduBce.phar"],
+    "files": [
+      "third/BaiduBce.phar"
+    ],
     "psr-4": {
       "Tests\\": "tests"
     }

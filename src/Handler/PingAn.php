@@ -4,16 +4,10 @@
 namespace Fize\Provider\Upload\Handler;
 
 use Exception;
-use Fize\IO\File as Fso;
+use Fize\IO\File;
 use Fize\Third\PingAn\Api\OBS;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
-use provider\upload\Upload;
-use think\facade\Config;
-use think\facade\Env;
-use think\facade\Request;
-use think\File;
-use think\Image;
 
 /**
  * 平安OBS
