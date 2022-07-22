@@ -529,7 +529,7 @@ class HuaWei extends UploadAbstract implements UploadHandler
      * @param int    $expires 有效期(秒)，为0表示永久有效
      * @return string
      */
-    public function getPreviewUrl(string $url, int $expires = 0): string
+    public function getAuthorizedUrl(string $url, int $expires = 0): string
     {
         if ($expires == 0) {
             $expires = 2592000;  // 最大支持30天

@@ -2,32 +2,31 @@
 
 namespace Fize\Provider\Upload\Handler;
 
+use BaiduBce\Auth\SignOptions;
+use BaiduBce\Services\Bos\BosClient;
+use BaiduBce\Services\Bos\BosOptions;
+use DateTime;
+use Fize\Exception\FileException;
+use Fize\IO\File;
+use Fize\IO\Mime;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
-use fuli\commons\util\io\File as Fso;
-use fuli\commons\util\net\Http;
-use OSS\OssClient;
-use think\exception\FileException;
-use think\facade\Config;
-use think\facade\Request;
-use think\File;
-use think\file\UploadedFile;
 
 /**
- * 阿里云OSS
+ * 百度智能云BOS
  */
-class ALiYun extends UploadAbstract implements UploadHandler
+class BaiDu extends UploadAbstract implements UploadHandler
 {
 
     /**
      * @var string 记录上传临时信息所用的文件名前缀
      */
-    protected $tempPre = 'aliyun_';
+    protected $tempPre = 'baidu_';
 
     /**
-     * @var OssClient OSS对象
+     * @var BosClient BOS对象
      */
-    protected $ossClient;
+    protected $bosClient;
 
     /**
      * 初始化
@@ -37,15 +36,26 @@ class ALiYun extends UploadAbstract implements UploadHandler
      */
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null)
     {
-        $this->cfg = array_merge(Config::get('third.ALiYun.upload'), $cfg);
-        $this->providerCfg = array_merge(Config::get('provider.upload'), $providerCfg);
+        self::assertHasKey($cfg, 'config');
+        self::assertHasKey($cfg, 'bucket');
+        $boscfg = $cfg['config'];
+        self::assertHasKey($boscfg, 'credentials');
+        $credentials = $boscfg['credentials'];
+        self::assertHasKey($credentials, 'accessKeyId');
+        self::assertHasKey($credentials, 'secretAccessKey');
+        self::assertHasKey($boscfg, 'endpoint');
+        if (!isset($cfg['domain'])) {
+            $cfg['domain'] = $boscfg['endpoint'];
+        }
+        $this->cfg = $cfg;
+        $this->initProviderCfg($providerCfg);
 
         if (is_null($tempDir)) {
-            $tempDir = Config::get('filesystem.disks.temps.root');
+            $tempDir = '';
         }
         $this->tempDir = $tempDir;
 
-        $this->ossClient = new OssClient($this->cfg['accessKeyId'], $this->cfg['accessKeySecret'], $this->cfg['endpoint']);
+        $this->bosClient = new BosClient($boscfg);
     }
 
     /**
@@ -57,6 +67,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
      * @param string|null $type     指定类型
      * @param string|null $file_key 文件路径标识
      * @return array 返回保存文件的相关信息
+     * @todo 待修正
      */
     public function upload(string $name, string $type = null, string $file_key = null): array
     {
@@ -73,6 +84,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
      * @param string|null $type      指定类型
      * @param array|null  $file_keys 文件路径标识
      * @return array 返回每个保存文件的相关信息组成的数组
+     * @todo 待修正
      */
     public function uploads(string $name, string $type = null, array $file_keys = null): array
     {
@@ -102,18 +114,17 @@ class ALiYun extends UploadAbstract implements UploadHandler
         }
 
         $mime = strtolower($matches[2]);
-        $extension = Fso::getExtensionFromMime($mime);
+        $extension = (new Mime($mime))->getExtension();
         if (empty($extension)) {
             throw new FileException('无法识别上传的文件后缀名');
         }
 
         $save_name = uniqid() . '.' . $extension;
-        $save_file = $this->tempDir . DIRECTORY_SEPARATOR . $save_name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
-        $fso = new Fso($save_file, true, true, 'w');
-        $result = $fso->write(base64_decode(str_replace($matches[1], '', $base64_centent)));
-        $fso->close();
+        $save_file = $this->tempDir . DIRECTORY_SEPARATOR . $save_name;
+        $fso = new File($save_file, 'w');
+        $result = $fso->fwrite(base64_decode(str_replace($matches[1], '', $base64_centent)));
         $fso->clearStatCache();
-        $size = $fso->getInfo('size');
+        $size = $fso->getSize();
 
         if ($result === false) {
             throw new FileException('上传失败');
@@ -129,7 +140,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
         $domain = $this->cfg['domain'];
         $url = $domain . '/' . $file_key;
 
-        $this->ossClient->uploadFile($this->cfg['bucket'], $file_key, $save_file);
+        $this->bosClient->putObjectFromFile($this->cfg['bucket'], $file_key, $save_file);
 
         $data = [
             'url'          => $url,
@@ -139,7 +150,6 @@ class ALiYun extends UploadAbstract implements UploadHandler
             'image_height' => $imageheight,
             'file_size'    => $size,
             'mime_type'    => $mime,
-            'storage'      => 'ALiYun',
             'sha1'         => hash_file('sha1', $save_file),
             'extend'       => []
         ];
@@ -159,8 +169,8 @@ class ALiYun extends UploadAbstract implements UploadHandler
      */
     public function uploadFile(string $file_path, string $type = null, string $file_key = null): array
     {
-        $file = new Fso($file_path);
-        $extension = $file->getExtensionPossible();
+        $file = new File($file_path);
+        $extension = $file->getExtension();
         [$imagewidth, $imageheight] = $this->getImageSize($file_path, $extension);  // 文件直传故不进行图片压缩
 
         if (is_null($file_key)) {
@@ -176,20 +186,20 @@ class ALiYun extends UploadAbstract implements UploadHandler
         $domain = $this->cfg['domain'];
         $url = $domain . '/' . $file_key;
 
-        $this->ossClient->uploadFile($this->cfg['bucket'], $file_key, $file_path);
+        $this->bosClient->putObjectFromFile($this->cfg['bucket'], $file_key, $file_path);
 
         $data = [
-            'original_name' => basename($file_path),
-            'url'           => $url,
-            'path'          => $path,
-            'extension'     => $extension,
-            'image_width'   => $imagewidth,
-            'image_height'  => $imageheight,
-            'file_size'     => $file->getInfo('size'),
-            'mime_type'     => $file->getMime(),
-            'storage'       => 'ALiYun',
-            'sha1'          => hash_file('sha1', $file_path),
-            'extend'        => []
+            'url'          => $url,
+            'path'         => $path,
+            'extension'    => $extension,
+            'image_width'  => $imagewidth,
+            'image_height' => $imageheight,
+            'file_size'    => $file->getSize(),
+            'mime_type'    => $file->getMime(),
+            'sha1'         => hash_file('sha1', $file_path),
+            'extend'       => [
+                'original_name' => basename($file_path)
+            ]
         ];
         return $data;
     }
@@ -208,33 +218,30 @@ class ALiYun extends UploadAbstract implements UploadHandler
      */
     public function uploadFromUrl(string $url, string $extension = null, string $type = null, string $file_key = null): array
     {
-        $original_url = $url;
         if (is_null($extension)) {
-            $extension = pathinfo($original_url, PATHINFO_EXTENSION);
+            $extension = pathinfo($url, PATHINFO_EXTENSION);
         }
         if ($extension) {
             $save_name = uniqid() . '.' . $extension;
         } else {
             $save_name = uniqid();
         }
-        $save_file = $this->tempDir . '/' . $save_name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
+        $save_file = $this->tempDir . '/' . $save_name;
 
-        $http = new Http();
-        $content = $http->get($url);
+        $content = file_get_contents($url);
         if ($content === false) {
-            throw new FileException('获取远程文件时发生错误：' . $http->lastErrMsg());
+            throw new FileException('获取远程文件时发生错误。');
         }
 
-        $fso = new Fso($save_file, true, true, 'w');
-        $result = $fso->write($content);
-        if ($result === false) {
+        $fso = new File($save_file, 'w');
+        $result = $fso->fwrite($content);
+        if ($result === 0) {
             throw new FileException('上传失败');
         }
-        $fso->close();
         $data = $this->uploadFile($save_file, $type, $file_key);
-        unlink($save_file);  // 已上传到OSS，删除本地文件
-        unset($data['original_name']);
-        $data['original_url'] = $original_url;
+        unlink($save_file);
+        unset($data['extend']['original_name']);
+        $data['extend']['original_url'] = $url;
         return $data;
     }
 
@@ -251,6 +258,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
      * @param string|null $extension  后缀名
      * @param string|null $type       指定类型。当参数$file_key参数 $type 无效。
      * @return array
+     * @todo 待修正
      */
     public function uploadLarge(string $name, int $blob_index, int $blob_count, string $file_key = null, string $extension = null, string $type = null): array
     {
@@ -349,18 +357,17 @@ class ALiYun extends UploadAbstract implements UploadHandler
             file_put_contents($temp_file, $part, FILE_APPEND);
         }
 
-        $options = [
-            OssClient::OSS_CHECK_MD5 => true,
-            OssClient::OSS_PART_SIZE => 2 * 1024 * 1024,
-        ];
-        $this->ossClient->multiuploadFile($this->cfg['bucket'], $file_key, $temp_file, $options);
-
         $domain = $this->cfg['domain'];
         $url = $domain . '/' . $file_key;
         $path = $file_key;
         [$imagewidth, $imageheight] = $this->imageResize($temp_file, $extension);
 
-        $tempFile = new Fso($temp_file);
+        $options = [
+            BosOptions::PART_SIZE => 2 * 1024 * 1024
+        ];
+        $this->bosClient->putSuperObjectFromFile($this->cfg['bucket'], $file_key, $temp_file, $options);
+
+        $tempFile = new File($temp_file);
         $tempFile->clearStatCache();
         $data = [
             'url'          => $url,
@@ -368,13 +375,12 @@ class ALiYun extends UploadAbstract implements UploadHandler
             'extension'    => $extension,
             'image_width'  => $imagewidth,
             'image_height' => $imageheight,
-            'file_size'    => $tempFile->getInfo('size'),
+            'file_size'    => $tempFile->getSize(),
             'mime_type'    => $tempFile->getMime(),
-            'storage'      => 'ALiYun',
             'sha1'         => hash_file('sha1', $temp_file),
             'extend'       => []
         ];
-        $tempFile->close();
+        unset($tempFile);
         unlink($temp_file);
         return $data;
     }
@@ -393,7 +399,8 @@ class ALiYun extends UploadAbstract implements UploadHandler
             $file_key = $sdir . '/' . $save_name;
         }
 
-        $uploadId = $this->ossClient->initiateMultipartUpload($this->cfg['bucket'], $file_key);
+        $response = $this->bosClient->initiateMultipartUpload($this->cfg['bucket'], $file_key);
+        $uploadId = $response->uploadId;
         $this->savePartUploadInfo($file_key, ['uploadId' => $uploadId, 'tempName' => uniqid()]);
 
         return $file_key;
@@ -408,8 +415,8 @@ class ALiYun extends UploadAbstract implements UploadHandler
     {
         $info = $this->getPartUploadInfo($file_key);
         $this->assertHasKey($info, 'uploadId');
-        if (isset($info['ETags'])) {
-            $partNumber = (end($info['ETags']))['PartNumber'] + 1;
+        if (isset($info['eTags'])) {
+            $partNumber = (end($info['eTags']))['partNumber'] + 1;
         } else {
             $partNumber = 1;
         }
@@ -424,20 +431,12 @@ class ALiYun extends UploadAbstract implements UploadHandler
         clearstatcache(true, $temp_file);
         $new_size = filesize($temp_file);
 
-        $upOptions = [
-            OssClient::OSS_FILE_UPLOAD => $temp_file,
-            OssClient::OSS_PART_NUM    => $partNumber,
-            OssClient::OSS_SEEK_TO     => $org_size,
-            OssClient::OSS_LENGTH      => $new_size - $org_size,
-            OssClient::OSS_CHECK_MD5   => true,
-            OssClient::OSS_CONTENT_MD5 => base64_encode(md5($content, true))
-
-        ];
-        $eTag = $this->ossClient->uploadPart($this->cfg['bucket'], $file_key, $info['uploadId'], $upOptions);
-        $blockStatus = ['ETag' => $eTag, 'PartNumber' => $partNumber];
-        $etags = $info['ETags'] ?? [];
+        $response = $this->bosClient->uploadPartFromFile($this->cfg['bucket'], $file_key, $info['uploadId'], $partNumber, $temp_file, $org_size, $new_size - $org_size);
+        $eTag = $response->metadata["etag"];
+        $blockStatus = ['eTag' => $eTag, 'partNumber' => $partNumber];
+        $etags = $info['eTags'] ?? [];
         $etags[] = $blockStatus;
-        $this->savePartUploadInfo($file_key, ['ETags' => $etags]);
+        $this->savePartUploadInfo($file_key, ['eTags' => $etags]);
     }
 
     /**
@@ -451,18 +450,18 @@ class ALiYun extends UploadAbstract implements UploadHandler
     {
         $info = $this->getPartUploadInfo($file_key);
         $this->assertHasKey($info, 'uploadId');
-        $this->assertHasKey($info, 'ETags');
+        $this->assertHasKey($info, 'eTags');
 
-        $this->ossClient->completeMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId'], $info['ETags']);
+        $this->bosClient->completeMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId'], $info['eTags']);
 
         $temp_file = $this->tempDir . '/' . $info['tempName'];
-        $tempFile = new Fso($temp_file);
+        $tempFile = new File($temp_file);
         $extension = pathinfo($file_key, PATHINFO_EXTENSION);
         if (empty($extension) && $fname) {
             $extension = pathinfo($fname, PATHINFO_EXTENSION);
         }
         if (empty($extension)) {
-            $extension = $tempFile->getExtensionPossible();
+            $extension = $tempFile->getExtension();
         }
 
         $path = $file_key;
@@ -470,7 +469,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
         $url = $domain . '/' . $file_key;
         [$imagewidth, $imageheight] = $this->imageResize($temp_file, $extension);
 
-        $file_size = $tempFile->getInfo('size');
+        $file_size = $tempFile->getSize();
         $file_mime = $tempFile->getMime();
         $sha1 = hash_file('sha1', $temp_file);
 
@@ -485,7 +484,6 @@ class ALiYun extends UploadAbstract implements UploadHandler
             'image_height' => $imageheight,
             'file_size'    => $file_size,
             'mime_type'    => $file_mime,
-            'storage'      => 'ALiYun',
             'sha1'         => $sha1,
             'extend'       => [
                 'fname' => $fname
@@ -501,14 +499,14 @@ class ALiYun extends UploadAbstract implements UploadHandler
     {
         $info = $this->getPartUploadInfo($file_key);
         $this->assertHasKey($info, 'uploadId');
-        $this->ossClient->abortMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId']);
+        $this->bosClient->abortMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId']);
         $temp_file = $this->tempDir . '/' . $info['tempName'];
         unlink($temp_file);
         $this->deletPartUploadInfo($file_key);
     }
 
     /**
-     * 返回已授权的预览URL
+     * 返回已授权的URL
      * @param string $url     原URL
      * @param int    $expires 有效期(秒)，为0表示永久有效
      * @return string
@@ -518,7 +516,11 @@ class ALiYun extends UploadAbstract implements UploadHandler
         if ($this->cfg['private']) {
             $key = parse_url($url, PHP_URL_PATH);
             $key = substr($key, 1);  // 删除第一个【/】
-            $url = $this->ossClient->signUrl($this->cfg['bucket'], $key, $expires);
+            $options = [
+                SignOptions::TIMESTAMP             => new DateTime(),
+                SignOptions::EXPIRATION_IN_SECONDS => $expires,
+            ];
+            $url = $this->bosClient->generatePreSignedUrl($this->cfg['bucket'], $key, $options);
         }
         return $url;
     }
@@ -532,6 +534,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
      * @param string|null  $type       指定类型
      * @param string|null  $file_key   文件路径标识
      * @return array
+     * @todo 待修正
      */
     protected function handleUpload(UploadedFile $uploadFile, string $type = null, string $file_key = null): array
     {

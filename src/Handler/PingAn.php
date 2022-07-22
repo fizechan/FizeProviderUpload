@@ -362,7 +362,7 @@ class PingAn extends UploadAbstract implements UploadHandler
      * @param string $url 原URL
      * @return string
      */
-    public function getPreviewUrl($url)
+    public function getAuthorizedUrl($url)
     {
         $config = $this->config;
         if ($config['private']) {

@@ -5,7 +5,8 @@ namespace Fize\Provider\Upload;
 use Exception;
 use Fize\Codec\Json;
 use Fize\Image\Image;
-use Fize\IO\File as Fso;
+use Fize\IO\Extension;
+use Fize\IO\File;
 
 /**
  * 上传基类
@@ -64,15 +65,14 @@ abstract class UploadAbstract
         }
         $imagewidth = null;
         $imageheight = null;
-        if (Image::isImg($extension)) {
+        if (Extension::isImage($extension)) {
             $imgInfo = getimagesize($file);
             $imagewidth = $imgInfo[0] ?? null;
             $imageheight = $imgInfo[1] ?? null;
             if ($imagewidth > $this->providerCfg['image_max_width'] && filesize($file) > $this->providerCfg['image_max_size']) {
                 $imageheight = (int)round($this->providerCfg['image_max_width'] * $imageheight / $imagewidth);
                 $imagewidth = $this->providerCfg['image_max_width'];
-                $image = Image::open($file);
-                $image->thumb($imagewidth, $imageheight)->save($file);
+                Image::scale($file, $imagewidth, $imageheight);
             }
         }
         return [$imagewidth, $imageheight];
@@ -91,7 +91,7 @@ abstract class UploadAbstract
         }
         $imagewidth = null;
         $imageheight = null;
-        if (Image::isImg($extension)) {
+        if (Extension::isImage($extension)) {
             $imgInfo = getimagesize($file);
             $imagewidth = $imgInfo[0] ?? null;
             $imageheight = $imgInfo[1] ?? null;
@@ -107,15 +107,15 @@ abstract class UploadAbstract
     protected function getPartUploadInfo(string $key): array
     {
         $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
-        $file = new Fso($infoFile, true);
-        $file->open('r');
-        $content = $file->getContents();
-        if ($content) {
-            $content = Json::decode($content);
-        } else {
-            $content = [];
+        if (!File::exists($infoFile)) {
+            return [];
         }
-        $file->close();
+        $file = new File($infoFile, 'r');
+        $content = $file->getContents();
+        if (!$content) {
+            return [];
+        }
+        $content = Json::decode($content);
         return $content;
     }
 
@@ -126,22 +126,13 @@ abstract class UploadAbstract
      */
     protected function savePartUploadInfo(string $key, array $keyValues)
     {
-        $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
-        $file = new Fso($infoFile, true);
-        $file->open('r');
-        $content = $file->getContents();
-        if ($content) {
-            $content = Json::decode($content);
-        } else {
-            $content = [];
-        }
-        $file->close();
+        $content = $this->getPartUploadInfo($key);
         $content = array_merge($content, $keyValues);
         $content = Json::encode($content, JSON_UNESCAPED_UNICODE);
-        $file->open('w');
-        $file->lock(LOCK_EX);
-        $file->write($content);
-        $file->close();
+        $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        $file = new File($infoFile, 'w');
+        $file->flock(LOCK_EX);
+        $file->fwrite($content);
     }
 
     /**
@@ -165,5 +156,19 @@ abstract class UploadAbstract
         if (!isset($array[$key])) {
             throw new Exception("缺少必要参数：$key");
         }
+    }
+
+    /**
+     * 初始化provider设置
+     * @param array $providerCfg provider设置
+     */
+    protected function initProviderCfg(array $providerCfg)
+    {
+        $defConfig = [
+            'image_resize'    => true,  // 图片大小调整
+            'image_max_width' => 1000,   // 图片宽度超过该值时进行调整
+            'image_max_size'  => 2 * 1024 * 1024,  // 图片文件大小超过该值时进行调整
+        ];
+        $this->providerCfg = array_merge($defConfig, $providerCfg);
     }
 }

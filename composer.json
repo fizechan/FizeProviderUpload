@@ -16,12 +16,14 @@
   "require": {
     "php": ">=7.1.0",
     "ext-json": "*",
+    "fize/exception": "^2.1.0",
     "fize/image": "^2.0.0",
-    "fize/io": "^7.0.1"
+    "fize/io": "^8.0.0"
   },
   "suggest": {
   },
   "autoload-dev": {
+    "files": ["third/BaiduBce.phar"],
     "psr-4": {
       "Tests\\": "tests"
     }

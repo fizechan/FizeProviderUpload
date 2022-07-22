@@ -16,18 +16,17 @@ class Upload
 
     /**
      * 取得单例
-     * @param string|null $handler 使用的实际接口名称
+     * @param string|null $handler     使用的实际接口名称
+     * @param array       $cfg         配置
+     * @param array       $providerCfg provider设置
+     * @param string|null $tempDir     临时文件存放文件夹目录
      * @return UploadHandler
      */
-    public static function getInstance(string $handler): UploadHandler
+    public static function getInstance(string $handler, array $cfg = [], array $providerCfg = [], string $tempDir = null): UploadHandler
     {
-        if (!$handler) {
-            $handler = Config::get('provider.upload.handler');
-        }
-
         if (!isset(self::$handlers[$handler])) {
-            $class = '\\' . __NAMESPACE__ . '\\handler\\' . $handler;
-            self::$handlers[$handler] = new $class();
+            $class = '\\' . __NAMESPACE__ . '\\Handler\\' . $handler;
+            self::$handlers[$handler] = new $class($cfg, $providerCfg, $tempDir);
         }
         return self::$handlers[$handler];
     }

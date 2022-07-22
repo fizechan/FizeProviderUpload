@@ -1,5 +1,6 @@
-/composer.lock
-/.idea
-/vendor
+/.idea/
+/vendor/
+/temp/
+/third/
 /.phpunit.result.cache
-/temp
+/composer.lock
