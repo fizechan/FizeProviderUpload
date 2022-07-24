@@ -2,6 +2,7 @@
 
 namespace Fize\Provider\Upload\Handler;
 
+use Fize\Exception\FileException;
 use Fize\IO\File;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;

@@ -127,11 +127,11 @@ class TestALiYun extends TestCase
         self::assertTrue(true);
     }
 
-    public function testGetPreviewUrl()
+    public function testGetAuthorizedUrl()
     {
         $uploader = new ALiYun();
         $url = "https://grz-qcjr-dev.oss-cn-hangzhou.aliyuncs.com/202207/19/62d6222265303.jpg";
-        $url2 = $uploader->getPreviewUrl($url, 3600 * 24 * 365 * 100);
+        $url2 = $uploader->getAuthorizedUrl($url, 3600 * 24 * 365 * 100);
         var_dump($url2);
         self::assertEquals($url2, $url);
     }

@@ -2,7 +2,9 @@
 
 namespace Fize\Provider\Upload\Handler;
 
+use Fize\Exception\FileException;
 use Fize\IO\File;
+use Fize\IO\Mime;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
 use OSS\OssClient;
@@ -96,18 +98,17 @@ class ALiYun extends UploadAbstract implements UploadHandler
         }
 
         $mime = strtolower($matches[2]);
-        $extension = Fso::getExtensionFromMime($mime);
+        $extension = (new Mime($mime))->getExtension();
         if (empty($extension)) {
             throw new FileException('无法识别上传的文件后缀名');
         }
 
         $save_name = uniqid() . '.' . $extension;
         $save_file = $this->tempDir . DIRECTORY_SEPARATOR . $save_name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
-        $fso = new Fso($save_file, true, true, 'w');
-        $result = $fso->write(base64_decode(str_replace($matches[1], '', $base64_centent)));
-        $fso->close();
-        $fso->clearStatCache();
-        $size = $fso->getInfo('size');
+        $fso = new File($save_file, 'w');
+        $result = $fso->fwrite(base64_decode(str_replace($matches[1], '', $base64_centent)));
+        $fso->clearstatcache();
+        $size = $fso->getSize();
 
         if ($result === false) {
             throw new FileException('上传失败');
@@ -153,8 +154,8 @@ class ALiYun extends UploadAbstract implements UploadHandler
      */
     public function uploadFile(string $file_path, string $type = null, string $file_key = null): array
     {
-        $file = new Fso($file_path);
-        $extension = $file->getExtensionPossible();
+        $file = new File($file_path);
+        $extension = $file->getExtension();
         [$imagewidth, $imageheight] = $this->getImageSize($file_path, $extension);  // 文件直传故不进行图片压缩
 
         if (is_null($file_key)) {
@@ -179,7 +180,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
             'extension'     => $extension,
             'image_width'   => $imagewidth,
             'image_height'  => $imageheight,
-            'file_size'     => $file->getInfo('size'),
+            'file_size'     => $file->getSize(),
             'mime_type'     => $file->getMime(),
             'storage'       => 'ALiYun',
             'sha1'          => hash_file('sha1', $file_path),
@@ -213,18 +214,16 @@ class ALiYun extends UploadAbstract implements UploadHandler
         }
         $save_file = $this->tempDir . '/' . $save_name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
 
-        $http = new Http();
-        $content = $http->get($url);
+        $content = file_get_contents($url);
         if ($content === false) {
-            throw new FileException('获取远程文件时发生错误：' . $http->lastErrMsg());
+            throw new FileException('获取远程文件时发生错误：');
         }
 
-        $fso = new Fso($save_file, true, true, 'w');
-        $result = $fso->write($content);
+        $fso = new File($save_file, 'w');
+        $result = $fso->fwrite($content);
         if ($result === false) {
             throw new FileException('上传失败');
         }
-        $fso->close();
         $data = $this->uploadFile($save_file, $type, $file_key);
         unlink($save_file);  // 已上传到OSS，删除本地文件
         unset($data['original_name']);
@@ -288,7 +287,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
 
         // 没指定后缀名的情况下进行后缀名猜测并重命名该文件
         if (empty($extension)) {
-            $extension = Fso::getExtensionFromMime($stat['Content-Type']);
+            $extension = (new Mime($stat['Content-Type']))->getExtension();
             if ($extension) {
                 $old_file_key = $file_key;
                 $file_key = $file_key . '.' . $extension;
@@ -354,21 +353,21 @@ class ALiYun extends UploadAbstract implements UploadHandler
         $path = $file_key;
         [$imagewidth, $imageheight] = $this->imageResize($temp_file, $extension);
 
-        $tempFile = new Fso($temp_file);
-        $tempFile->clearStatCache();
+        $tempFile = new File($temp_file);
+        $tempFile->clearstatcache();
         $data = [
             'url'          => $url,
             'path'         => $path,
             'extension'    => $extension,
             'image_width'  => $imagewidth,
             'image_height' => $imageheight,
-            'file_size'    => $tempFile->getInfo('size'),
+            'file_size'    => $tempFile->getSize(),
             'mime_type'    => $tempFile->getMime(),
             'storage'      => 'ALiYun',
             'sha1'         => hash_file('sha1', $temp_file),
             'extend'       => []
         ];
-        $tempFile->close();
+        unset($tempFile);
         unlink($temp_file);
         return $data;
     }
@@ -450,13 +449,13 @@ class ALiYun extends UploadAbstract implements UploadHandler
         $this->ossClient->completeMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId'], $info['ETags']);
 
         $temp_file = $this->tempDir . '/' . $info['tempName'];
-        $tempFile = new Fso($temp_file);
+        $tempFile = new File($temp_file);
         $extension = pathinfo($file_key, PATHINFO_EXTENSION);
         if (empty($extension) && $fname) {
             $extension = pathinfo($fname, PATHINFO_EXTENSION);
         }
         if (empty($extension)) {
-            $extension = $tempFile->getExtensionPossible();
+            $extension = $tempFile->getExtension();
         }
 
         $path = $file_key;
@@ -464,7 +463,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
         $url = $domain . '/' . $file_key;
         [$imagewidth, $imageheight] = $this->imageResize($temp_file, $extension);
 
-        $file_size = $tempFile->getInfo('size');
+        $file_size = $tempFile->getSize();
         $file_mime = $tempFile->getMime();
         $sha1 = hash_file('sha1', $temp_file);
 
@@ -535,13 +534,12 @@ class ALiYun extends UploadAbstract implements UploadHandler
 
         $extension = $uploadFile->getOriginalExtension();
         if (empty($extension)) {
-            $fso = new Fso($uploadFile->getRealPath());
+            $fso = new File($uploadFile->getRealPath());
             $mime = $fso->getMime();
-            $extension = Fso::getExtensionFromMime($mime);
+            $extension = (new Mime($mime))->getExtension();
             if (empty($extension)) {
                 throw new FileException('禁止上传无后缀名的文件');
             }
-            $fso->close();
         }
         if (!in_array($extension, explode(',', $this->providerCfg['extensions']))) {
             throw new FileException("禁止上传后缀名为{$extension}的文件");
@@ -551,10 +549,9 @@ class ALiYun extends UploadAbstract implements UploadHandler
 
         $save_name = uniqid() . '.' . $extension;
         $save_file = $this->tempDir . '/' . $save_name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
-        $saveFile = new Fso($save_file, true);
-        $saveFile->open('w');
-        $saveFile->write(file_get_contents($uploadFile->getPathname()));
-        $saveFile->close();
+        $saveFile = new File($save_file, 'w');
+        $saveFile->fwrite(file_get_contents($uploadFile->getPathname()));
+        unset($saveFile);
         [$imagewidth, $imageheight] = $this->imageResize($save_file, $extension);
         $saveFile = new File($save_file);
 

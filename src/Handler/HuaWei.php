@@ -4,6 +4,7 @@ namespace Fize\Provider\Upload\Handler;
 
 use Exception;
 use Fize\Codec\Json;
+use Fize\Exception\FileException;
 use Fize\IO\File;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;

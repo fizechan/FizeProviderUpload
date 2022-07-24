@@ -352,11 +352,12 @@ class PingAn extends UploadAbstract implements UploadHandler
     }
 
     /**
-     * 返回已授权的预览URL
-     * @param string $url 原URL
+     * 返回已授权的URL
+     * @param string $url     原URL
+     * @param int    $expires 有效期(秒)，为0表示永久有效
      * @return string
      */
-    public function getAuthorizedUrl($url)
+    public function getAuthorizedUrl(string $url, int $expires = 0): string
     {
         $config = $this->config;
         if ($config['private']) {
