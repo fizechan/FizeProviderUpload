@@ -4,6 +4,8 @@ namespace Fize\Provider\Upload\Handler;
 
 use Fize\Exception\FileException;
 use Fize\IO\File;
+use Fize\IO\Mime;
+use Fize\Web\Request;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
 
@@ -85,18 +87,18 @@ class Local extends UploadAbstract implements UploadHandler
         }
 
         $mime = strtolower($matches[2]);
-        $extension = Fso::getExtensionFromMime($mime);
+        $extension = (new Mime($mime))->getExtension();
         if (empty($extension)) {
             throw new FileException('无法识别上传的文件后缀名');
         }
 
         [$file_key, , , $save_file] = $this->getPathInfo($file_key, $type, $extension);
-        $fso = new Fso($save_file, true, true, 'w');
-        $result = $fso->write(base64_decode(str_replace($matches[1], '', $base64_centent)));
+        $fso = new File($save_file, 'w');
+        $result = $fso->fwrite(base64_decode(str_replace($matches[1], '', $base64_centent)));
         if ($result === false) {
             throw new FileException('上传失败');
         }
-        $fso->close();
+        unset($fso);
 
         [$imagewidth, $imageheight] = $this->imageResize($save_file, $extension);
         $saveFile = new File($save_file);
@@ -119,7 +121,9 @@ class Local extends UploadAbstract implements UploadHandler
             'mime_type'    => $mime,
             'storage'      => 'Local',
             'sha1'         => hash_file('sha1', $save_file),
-            'extend'       => ['full_path' => $full_path]  // 额外信息
+            'extend'       => [
+                'full_path' => $full_path
+            ]  // 额外信息
         ];
         return $data;
     }
@@ -141,13 +145,13 @@ class Local extends UploadAbstract implements UploadHandler
         unset($orig_file);
 
         [$file_key, $dir, $save_name, $save_file] = $this->getPathInfo($file_key, $type, $extension);
-        $fso = new Fso($save_file, true, true, 'w');
-        $result = $fso->write(file_get_contents($file_path));
+        $fso = new File($save_file, 'w');
+        $result = $fso->fwrite(file_get_contents($file_path));
         if ($result === false) {
             throw new FileException('上传失败');
         }
         $mime = $fso->getMime();
-        $fso->close();
+        unset($fso);
 
         if (empty($extension)) {
             [$save_file, $file_key] = $this->handleNoExtensionFile($dir, $save_name, $file_key);
@@ -176,7 +180,7 @@ class Local extends UploadAbstract implements UploadHandler
             'extend'        => [
                 'original_path' => realpath($file_path),
                 'full_path'     => $full_path,
-            ]  // 额外信息
+            ]
         ];
         return $data;
     }
@@ -199,19 +203,18 @@ class Local extends UploadAbstract implements UploadHandler
         $extension = pathinfo($original_url, PATHINFO_EXTENSION);
         [$file_key, $dir, $save_name, $save_file] = $this->getPathInfo($file_key, $type, $extension);
 
-        $http = new Http();
-        $content = $http->get($url);
+        $content = file_get_contents($url);
         if ($content === false) {
-            throw new FileException('获取远程文件时发生错误：' . $http->lastErrMsg());
+            throw new FileException('获取远程文件时发生错误');
         }
 
-        $fso = new Fso($save_file, true, true, 'w');
-        $result = $fso->write($content);
+        $fso = new File($save_file, 'w');
+        $result = $fso->fwrite($content);
         if ($result === false) {
             throw new FileException('上传失败');
         }
         $mime = $fso->getMime();
-        $fso->close();
+        unset($fso);
 
         if (empty($extension)) {
             [$save_file, $file_key, $extension] = $this->handleNoExtensionFile($dir, $save_name, $file_key);
@@ -225,7 +228,6 @@ class Local extends UploadAbstract implements UploadHandler
         [$imagewidth, $imageheight] = $this->getImageSize($save_file, $extension);  // 文件直传故不进行图片压缩
 
         $data = [
-            'original_url' => $original_url,
             'url'          => $url,
             'path'         => $path,
             'extension'    => $extension,
@@ -233,9 +235,11 @@ class Local extends UploadAbstract implements UploadHandler
             'image_height' => $imageheight,
             'file_size'    => filesize($save_file),
             'mime_type'    => $mime,
-            'storage'      => 'Local',
             'sha1'         => hash_file('sha1', $save_file),
-            'extend'       => ['full_path' => $full_path]  // 额外信息
+            'extend'       => [
+                'original_url' => $original_url,
+                'full_path'    => $full_path
+            ]
         ];
         return $data;
     }
@@ -284,9 +288,9 @@ class Local extends UploadAbstract implements UploadHandler
         // 结束
         $this->uploadLargeComplete($file_key);
 
-        $fso = new Fso($save_file);
+        $fso = new File($save_file);
         $mime = $fso->getMime();
-        $fso->close();
+        unset($fso);
 
         // 处理没有后缀名的情况
         if (empty($extension)) {
@@ -340,9 +344,9 @@ class Local extends UploadAbstract implements UploadHandler
         }
         $this->uploadLargeComplete($file_key);
 
-        $fso = new Fso($save_file);
+        $fso = new File($save_file);
         $mime = $fso->getMime();
-        $fso->close();
+        unset($fso);
 
         // 处理没有后缀名的情况
         if (empty($extension)) {
@@ -405,12 +409,12 @@ class Local extends UploadAbstract implements UploadHandler
         [, $dir, $save_name] = $this->getPathInfo($file_key);
         $save_part_name = $save_name . '.tmp';
         $save_file = Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_part_name;
-        $fso = new Fso($save_file, true, true, 'a');
-        $result = $fso->write($content);
+        $fso = new File($save_file, 'a');
+        $result = $fso->fwrite($content);
         if ($result === false) {
             throw new FileException('上传失败');
         }
-        $fso->close();
+        unset($fso);
     }
 
     /**
@@ -424,10 +428,10 @@ class Local extends UploadAbstract implements UploadHandler
     {
         [, $dir, $save_name, $save_file] = $this->getPathInfo($file_key);
         $save_part_name = $save_name . '.tmp';
-        $fso = new Fso(Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_part_name);
-        $fso->reName($save_file);
-        $fso->close();
-        $extension = $fso->getPathInfo(PATHINFO_EXTENSION);
+        $fso = new File(Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_part_name);
+        $fso->rename($save_file);
+        unset($fso);
+        $extension = pathinfo($save_file, PATHINFO_EXTENSION);
         if (empty($extension)) {
             [$save_file, $file_key, $extension] = $this->handleNoExtensionFile($dir, $save_name, $file_key);
         }
@@ -484,13 +488,13 @@ class Local extends UploadAbstract implements UploadHandler
 
         $extension = $uploadFile->getOriginalExtension();
         if (empty($extension)) {
-            $fso = new Fso($uploadFile->getRealPath());
+            $fso = new File($uploadFile->getRealPath());
             $mime = $fso->getMime();
-            $extension = Fso::getExtensionFromMime($mime);
+            $extension = (new Mime($mime))->getExtension();
             if (empty($extension)) {
                 throw new FileException('禁止上传无后缀名的文件');
             }
-            $fso->close();
+            unset($fso);
         }
         if (!in_array($extension, explode(',', $this->providerCfg['extensions']))) {
             throw new FileException("禁止上传后缀名为{$extension}的文件");
@@ -576,8 +580,8 @@ class Local extends UploadAbstract implements UploadHandler
     protected function handleNoExtensionFile(string $dir, string $save_name, string $file_key): array
     {
         $save_file = Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_name;
-        $fso = new Fso($save_file);
-        $extension = $fso->getExtensionPossible();
+        $fso = new File($save_file);
+        $extension = $fso->getExtension();
         if ($extension) {
             $save_name = $save_name . '.' . $extension;
             $file_key = $file_key . '.' . $extension;
@@ -587,7 +591,7 @@ class Local extends UploadAbstract implements UploadHandler
                 throw new FileException('保存文件时发生错误！');
             }
         }
-        $fso->close();
+        unset($fso);
         return [$save_file, $file_key, $extension];
     }
 }

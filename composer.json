@@ -18,7 +18,8 @@
     "ext-json": "*",
     "fize/exception": "^2.1.0",
     "fize/image": "^2.0.0",
-    "fize/io": "^8.0.0"
+    "fize/io": "^8.0.0",
+    "fize/web": "*"
   },
   "suggest": {
   },

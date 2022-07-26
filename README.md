@@ -9,3 +9,6 @@
 - 华为云(HuaWei)
 - 平安云(PingAn)
 - 七牛云(QiNiu)
+
+## 使用指南
+### 本地存储(Local)
