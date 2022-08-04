@@ -197,7 +197,7 @@ class Local extends UploadAbstract implements UploadHandler
      * @param string|null $file_key  文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function uploadFromUrl(string $url, string $extension = null, string $type = null, string $file_key = null): array
+    public function uploadRemote(string $url, string $extension = null, string $type = null, string $file_key = null): array
     {
         $original_url = $url;
         $extension = pathinfo($original_url, PATHINFO_EXTENSION);
@@ -242,6 +242,87 @@ class Local extends UploadAbstract implements UploadHandler
             ]
         ];
         return $data;
+    }
+
+    /**
+     * 分块上传：初始化
+     * @param string|null $file_key 文件路径标识，不指定则自动生成
+     * @param string|null $type     指定类型
+     * @return string 返回文件路径标识
+     */
+    public function uploadLargeInit(string $file_key = null, string $type = null): string
+    {
+        if (is_null($file_key)) {
+            $sdir = $this->getSaveDir($type);
+            $save_name = uniqid();
+            $file_key = $sdir . '/' . $save_name;
+        } else {  // 指定$file_key时如果有已存在的上传临时文件则删除作废以重新上传。
+            $save_part_file = Config::get('filesystem.disks.public.root') . '/' . $this->cfg['dir'] . '/' . $file_key . '.tmp';
+            if (is_file($save_part_file)) {
+                unlink($save_part_file);
+            }
+        }
+        return $file_key;
+    }
+
+    /**
+     * 分块上传：上传块
+     * @param string $file_key 文件路径标识
+     * @param string $content  块内容
+     */
+    public function uploadLargePart(string $file_key, string $content)
+    {
+        [, $dir, $save_name] = $this->getPathInfo($file_key);
+        $save_part_name = $save_name . '.tmp';
+        $save_file = Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_part_name;
+        $fso = new File($save_file, 'a');
+        $result = $fso->fwrite($content);
+        if ($result === false) {
+            throw new FileException('上传失败');
+        }
+        unset($fso);
+    }
+
+    /**
+     * 分块上传：结束并生成文件
+     * @param string      $file_key 文件路径标识
+     * @param string|null $fname    原文件名
+     * @param string|null $mimeType 指定Mime
+     * @return array 返回保存文件的相关信息
+     */
+    public function uploadLargeComplete(string $file_key, string $fname = null, string $mimeType = null): array
+    {
+        [, $dir, $save_name, $save_file] = $this->getPathInfo($file_key);
+        $save_part_name = $save_name . '.tmp';
+        $fso = new File(Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_part_name);
+        $fso->rename($save_file);
+        unset($fso);
+        $extension = pathinfo($save_file, PATHINFO_EXTENSION);
+        if (empty($extension)) {
+            [$save_file, $file_key, $extension] = $this->handleNoExtensionFile($dir, $save_name, $file_key);
+        }
+        $save_file = realpath($save_file);
+        return [
+            'file_key' => $file_key,
+            'fname'    => $fname,
+            'mimeType' => $mimeType,
+            'extend'   => [
+                'save_file' => $save_file,
+                'extension' => $extension
+            ]
+        ];
+    }
+
+    /**
+     * 终止上传
+     * @param string $file_key 文件路径标识
+     */
+    public function uploadLargeAbort(string $file_key)
+    {
+        [, $dir, $save_name] = $this->getPathInfo($file_key);
+        $save_part_name = $save_name . '.tmp';
+        $save_part_file = Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_part_name;
+        unlink($save_part_file);
     }
 
     /**
@@ -334,7 +415,7 @@ class Local extends UploadAbstract implements UploadHandler
      * @param string|null $file_key  文件路径标识
      * @return array
      */
-    public function uploadLargeParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array
+    public function uploadParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array
     {
         [$file_key, $dir, $save_name, $save_file] = $this->getPathInfo($file_key, $type, $extension);
 
@@ -376,87 +457,6 @@ class Local extends UploadAbstract implements UploadHandler
             ]  // 额外信息
         ];
         return $data;
-    }
-
-    /**
-     * 分块上传：初始化
-     * @param string|null $file_key 文件路径标识，不指定则自动生成
-     * @param string|null $type     指定类型
-     * @return string 返回文件路径标识
-     */
-    public function uploadLargeInit(string $file_key = null, string $type = null): string
-    {
-        if (is_null($file_key)) {
-            $sdir = $this->getSaveDir($type);
-            $save_name = uniqid();
-            $file_key = $sdir . '/' . $save_name;
-        } else {  // 指定$file_key时如果有已存在的上传临时文件则删除作废以重新上传。
-            $save_part_file = Config::get('filesystem.disks.public.root') . '/' . $this->cfg['dir'] . '/' . $file_key . '.tmp';
-            if (is_file($save_part_file)) {
-                unlink($save_part_file);
-            }
-        }
-        return $file_key;
-    }
-
-    /**
-     * 分块上传：上传块
-     * @param string $file_key 文件路径标识
-     * @param string $content  块内容
-     */
-    public function uploadLargePart(string $file_key, string $content)
-    {
-        [, $dir, $save_name] = $this->getPathInfo($file_key);
-        $save_part_name = $save_name . '.tmp';
-        $save_file = Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_part_name;
-        $fso = new File($save_file, 'a');
-        $result = $fso->fwrite($content);
-        if ($result === false) {
-            throw new FileException('上传失败');
-        }
-        unset($fso);
-    }
-
-    /**
-     * 分块上传：结束并生成文件
-     * @param string      $file_key 文件路径标识
-     * @param string|null $fname    原文件名
-     * @param string|null $mimeType 指定Mime
-     * @return array 返回保存文件的相关信息
-     */
-    public function uploadLargeComplete(string $file_key, string $fname = null, string $mimeType = null): array
-    {
-        [, $dir, $save_name, $save_file] = $this->getPathInfo($file_key);
-        $save_part_name = $save_name . '.tmp';
-        $fso = new File(Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_part_name);
-        $fso->rename($save_file);
-        unset($fso);
-        $extension = pathinfo($save_file, PATHINFO_EXTENSION);
-        if (empty($extension)) {
-            [$save_file, $file_key, $extension] = $this->handleNoExtensionFile($dir, $save_name, $file_key);
-        }
-        $save_file = realpath($save_file);
-        return [
-            'file_key' => $file_key,
-            'fname'    => $fname,
-            'mimeType' => $mimeType,
-            'extend'   => [
-                'save_file' => $save_file,
-                'extension' => $extension
-            ]
-        ];
-    }
-
-    /**
-     * 终止上传
-     * @param string $file_key 文件路径标识
-     */
-    public function uploadLargeAbort(string $file_key)
-    {
-        [, $dir, $save_name] = $this->getPathInfo($file_key);
-        $save_part_name = $save_name . '.tmp';
-        $save_part_file = Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_part_name;
-        unlink($save_part_file);
     }
 
     /**

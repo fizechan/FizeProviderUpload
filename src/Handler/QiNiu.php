@@ -204,7 +204,7 @@ class QiNiu extends UploadAbstract implements UploadHandler
      * @param string|null $file_key  文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function uploadFromUrl(string $url, string $extension = null, string $type = null, string $file_key = null): array
+    public function uploadRemote(string $url, string $extension = null, string $type = null, string $file_key = null): array
     {
         $original_url = $url;
         if (is_null($extension)) {
@@ -234,6 +234,84 @@ class QiNiu extends UploadAbstract implements UploadHandler
         unset($data['original_name']);
         $data['original_url'] = $original_url;
         return $data;
+    }
+
+    /**
+     * 分块上传：初始化
+     * @param string|null $file_key 文件路径标识，不指定则自动生成
+     * @param string|null $type     指定类型
+     * @return string 返回文件路径标识
+     */
+    public function uploadLargeInit(string $file_key = null, string $type = null): string
+    {
+        if (is_null($file_key)) {
+            $save_name = uniqid();
+            $sdir = $this->getSaveDir($type);
+            $file_key = $sdir . '/' . $save_name;
+        }
+        $upToken = $this->getUploadToken();
+        if ($this->cfg['version'] == 'v2') {
+            $up2 = new ResumeUploaderV2($upToken, $file_key, $this->tempDir);
+            $up2->initiateMultipartUpload();
+        }
+        return $file_key;
+    }
+
+    /**
+     * 分块上传：上传块
+     * @param string $file_key 文件路径标识
+     * @param string $content  块内容
+     */
+    public function uploadLargePart(string $file_key, string $content)
+    {
+        $upToken = $this->getUploadToken();
+        if ($this->cfg['version'] == 'v1') {
+            $up1 = new ResumeUploaderV1($upToken, $file_key, $this->tempDir);
+            $up1->mkblk($content);
+        } else {
+            $up2 = new ResumeUploaderV2($upToken, $file_key, $this->tempDir);
+            $up2->uploadPart($content);
+        }
+    }
+
+    /**
+     * 分块上传：结束并生成文件
+     * @param string      $file_key 文件路径标识
+     * @param string|null $fname    原文件名
+     * @param string|null $mimeType 指定Mime
+     * @return array 返回保存文件的相关信息
+     */
+    public function uploadLargeComplete(string $file_key, string $fname = null, string $mimeType = null): array
+    {
+        $upToken = $this->getUploadToken();
+        if ($this->cfg['version'] == 'v1') {
+            $up1 = new ResumeUploaderV1($upToken, $file_key, $this->tempDir);
+            $result = $up1->mkfile($fname, $mimeType);
+        } else {
+            $up2 = new ResumeUploaderV2($upToken, $file_key, $this->tempDir);
+            $result = $up2->completeMultipartUpload($fname, $mimeType);
+        }
+        return [
+            'file_key' => $file_key,
+            'fname'    => $fname,
+            'mimeType' => $mimeType,
+            'extend'   => $result
+        ];
+    }
+
+    /**
+     * 终止上传
+     * @param string $file_key 文件路径标识
+     */
+    public function uploadLargeAbort(string $file_key)
+    {
+        if ($this->cfg['version'] == 'v1') {
+            throw new Exception("七牛云分片上传v1版不支持终止上传！");
+        } else {
+            $upToken = $this->getUploadToken();
+            $up2 = new ResumeUploaderV2($upToken, $file_key, $this->tempDir);
+            $up2->abortMultipartUpload();
+        }
     }
 
     /**
@@ -382,84 +460,6 @@ class QiNiu extends UploadAbstract implements UploadHandler
             'extend'    => $stat
         ];
         return $data;
-    }
-
-    /**
-     * 分块上传：初始化
-     * @param string|null $file_key 文件路径标识，不指定则自动生成
-     * @param string|null $type     指定类型
-     * @return string 返回文件路径标识
-     */
-    public function uploadLargeInit(string $file_key = null, string $type = null): string
-    {
-        if (is_null($file_key)) {
-            $save_name = uniqid();
-            $sdir = $this->getSaveDir($type);
-            $file_key = $sdir . '/' . $save_name;
-        }
-        $upToken = $this->getUploadToken();
-        if ($this->cfg['version'] == 'v2') {
-            $up2 = new ResumeUploaderV2($upToken, $file_key, $this->tempDir);
-            $up2->initiateMultipartUpload();
-        }
-        return $file_key;
-    }
-
-    /**
-     * 分块上传：上传块
-     * @param string $file_key 文件路径标识
-     * @param string $content  块内容
-     */
-    public function uploadLargePart(string $file_key, string $content)
-    {
-        $upToken = $this->getUploadToken();
-        if ($this->cfg['version'] == 'v1') {
-            $up1 = new ResumeUploaderV1($upToken, $file_key, $this->tempDir);
-            $up1->mkblk($content);
-        } else {
-            $up2 = new ResumeUploaderV2($upToken, $file_key, $this->tempDir);
-            $up2->uploadPart($content);
-        }
-    }
-
-    /**
-     * 分块上传：结束并生成文件
-     * @param string      $file_key 文件路径标识
-     * @param string|null $fname    原文件名
-     * @param string|null $mimeType 指定Mime
-     * @return array 返回保存文件的相关信息
-     */
-    public function uploadLargeComplete(string $file_key, string $fname = null, string $mimeType = null): array
-    {
-        $upToken = $this->getUploadToken();
-        if ($this->cfg['version'] == 'v1') {
-            $up1 = new ResumeUploaderV1($upToken, $file_key, $this->tempDir);
-            $result = $up1->mkfile($fname, $mimeType);
-        } else {
-            $up2 = new ResumeUploaderV2($upToken, $file_key, $this->tempDir);
-            $result = $up2->completeMultipartUpload($fname, $mimeType);
-        }
-        return [
-            'file_key' => $file_key,
-            'fname'    => $fname,
-            'mimeType' => $mimeType,
-            'extend'   => $result
-        ];
-    }
-
-    /**
-     * 终止上传
-     * @param string $file_key 文件路径标识
-     */
-    public function uploadLargeAbort(string $file_key)
-    {
-        if ($this->cfg['version'] == 'v1') {
-            throw new Exception("七牛云分片上传v1版不支持终止上传！");
-        } else {
-            $upToken = $this->getUploadToken();
-            $up2 = new ResumeUploaderV2($upToken, $file_key, $this->tempDir);
-            $up2->abortMultipartUpload();
-        }
     }
 
     /**

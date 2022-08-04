@@ -217,7 +217,7 @@ class BaiDu extends UploadAbstract implements UploadHandler
      * @param string|null $file_key  文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function uploadFromUrl(string $url, string $extension = null, string $type = null, string $file_key = null): array
+    public function uploadRemote(string $url, string $extension = null, string $type = null, string $file_key = null): array
     {
         if (is_null($extension)) {
             $extension = pathinfo($url, PATHINFO_EXTENSION);
@@ -243,146 +243,6 @@ class BaiDu extends UploadAbstract implements UploadHandler
         unlink($save_file);
         unset($data['extend']['original_name']);
         $data['extend']['original_url'] = $url;
-        return $data;
-    }
-
-    /**
-     * 大文件分片上传
-     *
-     * 参数 `$file_key`：当 $blob_index 为0时填 null 表示自动生成，不为 0 时必填。
-     * 参数 `$extension`：不指定则根据MIME进行猜测
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * @param string      $name       文件域表单名
-     * @param int         $blob_index 当前分片下标
-     * @param int         $blob_count 分片总数量
-     * @param string|null $file_key   文件路径标识
-     * @param string|null $extension  后缀名
-     * @param string|null $type       指定类型。当参数$file_key参数 $type 无效。
-     * @return array
-     * @todo 待修正
-     */
-    public function uploadLarge(string $name, int $blob_index, int $blob_count, string $file_key = null, string $extension = null, string $type = null): array
-    {
-        if (empty($name)) {
-            throw new FileException('请指定要上传的文件。');
-        }
-        $uploadFile = Request::file($name);
-        if (empty($uploadFile)) {
-            throw new FileException('没有找到要上传的文件。');
-        }
-
-        if ($blob_index == 0 && is_null($file_key)) {
-            if ($extension) {
-                $save_name = uniqid() . '.' . $extension;
-            } else {
-                $save_name = uniqid();
-            }
-            $sdir = $this->getSaveDir($type);
-            $file_key = $sdir . '/' . $save_name;
-        }
-        if (is_null($file_key)) {
-            throw new FileException('请指定参数$file_key。');
-        }
-
-        // 开始
-        if ($blob_index == 0) {
-            $this->uploadLargeInit($file_key, $type);
-        }
-
-        // 中间
-        // file_key参数在上传过程中必须保持一致
-        $this->uploadLargePart($file_key, file_get_contents($uploadFile->getPathname()));
-        if ($blob_index < $blob_count - 1) {
-            return ['name' => $name, 'blob_index' => $blob_index, 'blob_count' => $blob_count, 'file_key' => $file_key, 'type' => $type];
-        }
-
-        // 结束
-        $this->uploadLargeComplete($file_key);
-
-        $stat = $this->ossClient->getObjectMeta($this->cfg['bucket'], $file_key);
-
-        // 没指定后缀名的情况下进行后缀名猜测并重命名该文件
-        if (empty($extension)) {
-            $extension = Fso::getExtensionFromMime($stat['Content-Type']);
-            if ($extension) {
-                $old_file_key = $file_key;
-                $file_key = $file_key . '.' . $extension;
-                $this->ossClient->copyObject($this->cfg['bucket'], $old_file_key, $this->cfg['bucket'], $file_key);
-                $this->ossClient->deleteObject($this->cfg['bucket'], $old_file_key);
-            }
-        }
-
-        $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $file_key;
-        $path = $file_key;
-
-        $data = [
-            'url'       => $url,
-            'path'      => $path,
-            'extension' => $extension,
-            'file_size' => $stat['Content-Length'],
-            'mime_type' => $stat['Content-Type'],
-            'storage'   => 'AliYun',
-            'sha1'      => $stat['ETag'],
-            'extend'    => $stat
-        ];
-        return $data;
-    }
-
-    /**
-     * 上传多个分块并合并成文件
-     *
-     * 参数 `$extension`：不指定则根据URL、MIME进行猜测
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param array       $parts     分块数组
-     * @param string|null $extension 后缀名
-     * @param string|null $type      指定类型
-     * @param string|null $file_key  文件路径标识
-     * @return array
-     */
-    public function uploadLargeParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array
-    {
-        if (is_null($file_key)) {
-            if ($extension) {
-                $save_name = uniqid() . '.' . $extension;
-            } else {
-                $save_name = uniqid();
-            }
-            $sdir = $this->getSaveDir($type);
-            $file_key = $sdir . '/' . $save_name;
-        }
-        $save_name = uniqid() . '.' . $extension;
-        $temp_file = $this->tempDir . '/' . $save_name;
-        foreach ($parts as $part) {
-            file_put_contents($temp_file, $part, FILE_APPEND);
-        }
-
-        $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $file_key;
-        $path = $file_key;
-        [$imagewidth, $imageheight] = $this->imageResize($temp_file, $extension);
-
-        $options = [
-            BosOptions::PART_SIZE => 2 * 1024 * 1024
-        ];
-        $this->bosClient->putSuperObjectFromFile($this->cfg['bucket'], $file_key, $temp_file, $options);
-
-        $tempFile = new File($temp_file);
-        $tempFile->clearstatcache();
-        $data = [
-            'url'          => $url,
-            'path'         => $path,
-            'extension'    => $extension,
-            'image_width'  => $imagewidth,
-            'image_height' => $imageheight,
-            'file_size'    => $tempFile->getSize(),
-            'mime_type'    => $tempFile->getMime(),
-            'sha1'         => hash_file('sha1', $temp_file),
-            'extend'       => []
-        ];
-        unset($tempFile);
-        unlink($temp_file);
         return $data;
     }
 
@@ -504,6 +364,146 @@ class BaiDu extends UploadAbstract implements UploadHandler
         $temp_file = $this->tempDir . '/' . $info['tempName'];
         unlink($temp_file);
         $this->deletPartUploadInfo($file_key);
+    }
+
+    /**
+     * 大文件分片上传
+     *
+     * 参数 `$file_key`：当 $blob_index 为0时填 null 表示自动生成，不为 0 时必填。
+     * 参数 `$extension`：不指定则根据MIME进行猜测
+     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
+     * @param string      $name       文件域表单名
+     * @param int         $blob_index 当前分片下标
+     * @param int         $blob_count 分片总数量
+     * @param string|null $file_key   文件路径标识
+     * @param string|null $extension  后缀名
+     * @param string|null $type       指定类型。当参数$file_key参数 $type 无效。
+     * @return array
+     * @todo 待修正
+     */
+    public function uploadLarge(string $name, int $blob_index, int $blob_count, string $file_key = null, string $extension = null, string $type = null): array
+    {
+        if (empty($name)) {
+            throw new FileException('请指定要上传的文件。');
+        }
+        $uploadFile = Request::file($name);
+        if (empty($uploadFile)) {
+            throw new FileException('没有找到要上传的文件。');
+        }
+
+        if ($blob_index == 0 && is_null($file_key)) {
+            if ($extension) {
+                $save_name = uniqid() . '.' . $extension;
+            } else {
+                $save_name = uniqid();
+            }
+            $sdir = $this->getSaveDir($type);
+            $file_key = $sdir . '/' . $save_name;
+        }
+        if (is_null($file_key)) {
+            throw new FileException('请指定参数$file_key。');
+        }
+
+        // 开始
+        if ($blob_index == 0) {
+            $this->uploadLargeInit($file_key, $type);
+        }
+
+        // 中间
+        // file_key参数在上传过程中必须保持一致
+        $this->uploadLargePart($file_key, file_get_contents($uploadFile->getPathname()));
+        if ($blob_index < $blob_count - 1) {
+            return ['name' => $name, 'blob_index' => $blob_index, 'blob_count' => $blob_count, 'file_key' => $file_key, 'type' => $type];
+        }
+
+        // 结束
+        $this->uploadLargeComplete($file_key);
+
+        $stat = $this->ossClient->getObjectMeta($this->cfg['bucket'], $file_key);
+
+        // 没指定后缀名的情况下进行后缀名猜测并重命名该文件
+        if (empty($extension)) {
+            $extension = Fso::getExtensionFromMime($stat['Content-Type']);
+            if ($extension) {
+                $old_file_key = $file_key;
+                $file_key = $file_key . '.' . $extension;
+                $this->ossClient->copyObject($this->cfg['bucket'], $old_file_key, $this->cfg['bucket'], $file_key);
+                $this->ossClient->deleteObject($this->cfg['bucket'], $old_file_key);
+            }
+        }
+
+        $domain = $this->cfg['domain'];
+        $url = $domain . '/' . $file_key;
+        $path = $file_key;
+
+        $data = [
+            'url'       => $url,
+            'path'      => $path,
+            'extension' => $extension,
+            'file_size' => $stat['Content-Length'],
+            'mime_type' => $stat['Content-Type'],
+            'storage'   => 'AliYun',
+            'sha1'      => $stat['ETag'],
+            'extend'    => $stat
+        ];
+        return $data;
+    }
+
+    /**
+     * 上传多个分块并合并成文件
+     *
+     * 参数 `$extension`：不指定则根据URL、MIME进行猜测
+     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
+     * 参数 `$file_key`：指定该参数后，参数 $type 无效
+     * @param array       $parts     分块数组
+     * @param string|null $extension 后缀名
+     * @param string|null $type      指定类型
+     * @param string|null $file_key  文件路径标识
+     * @return array
+     */
+    public function uploadParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array
+    {
+        if (is_null($file_key)) {
+            if ($extension) {
+                $save_name = uniqid() . '.' . $extension;
+            } else {
+                $save_name = uniqid();
+            }
+            $sdir = $this->getSaveDir($type);
+            $file_key = $sdir . '/' . $save_name;
+        }
+        $save_name = uniqid() . '.' . $extension;
+        $temp_file = $this->tempDir . '/' . $save_name;
+        foreach ($parts as $part) {
+            file_put_contents($temp_file, $part, FILE_APPEND);
+        }
+
+        $domain = $this->cfg['domain'];
+        $url = $domain . '/' . $file_key;
+        $path = $file_key;
+        [$imagewidth, $imageheight] = $this->imageResize($temp_file, $extension);
+
+        $options = [
+            BosOptions::PART_SIZE => 2 * 1024 * 1024
+        ];
+        $this->bosClient->putSuperObjectFromFile($this->cfg['bucket'], $file_key, $temp_file, $options);
+
+        $tempFile = new File($temp_file);
+        $tempFile->clearstatcache();
+        $data = [
+            'url'          => $url,
+            'path'         => $path,
+            'extension'    => $extension,
+            'image_width'  => $imagewidth,
+            'image_height' => $imageheight,
+            'file_size'    => $tempFile->getSize(),
+            'mime_type'    => $tempFile->getMime(),
+            'sha1'         => hash_file('sha1', $temp_file),
+            'extend'       => []
+        ];
+        unset($tempFile);
+        unlink($temp_file);
+        return $data;
     }
 
     /**

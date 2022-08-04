@@ -222,7 +222,7 @@ class HuaWei extends UploadAbstract implements UploadHandler
      * @param string|null $file_key  文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function uploadFromUrl(string $url, string $extension = null, string $type = null, string $file_key = null): array
+    public function uploadRemote(string $url, string $extension = null, string $type = null, string $file_key = null): array
     {
         $original_url = $url;
         if (is_null($extension)) {
@@ -252,6 +252,106 @@ class HuaWei extends UploadAbstract implements UploadHandler
         unset($data['original_name']);
         $data['original_url'] = $original_url;
         return $data;
+    }
+
+    /**
+     * 分块上传：初始化
+     * @param string|null $file_key 文件路径标识，不指定则自动生成
+     * @param string|null $type     指定类型
+     * @return string 返回文件路径标识
+     */
+    public function uploadLargeInit(string $file_key = null, string $type = null): string
+    {
+        if (is_null($file_key)) {
+            $save_name = uniqid();
+            $sdir = $this->getSaveDir($type);
+            $file_key = $sdir . '/' . $save_name;
+        }
+
+        $resp = $this->obsClient->initiateMultipartUpload([
+            'Bucket' => $this->cfg['bucket'],
+            'Key'    => $file_key
+        ]);
+        $this->savePartUploadInfo($file_key, (array)$resp);
+
+        return $file_key;
+    }
+
+    /**
+     * 分块上传：上传块
+     * @param string $file_key 文件路径标识
+     * @param string $content  块内容
+     */
+    public function uploadLargePart(string $file_key, string $content)
+    {
+        $info = $this->getPartUploadInfo($file_key);
+        $this->assertHasKey($info, 'UploadId');
+        if (isset($info['ETags'])) {
+            $partNumber = (end($info['ETags']))['PartNumber'] + 1;
+        } else {
+            $partNumber = 1;
+        }
+
+        $resp = $this->obsClient->uploadPart([
+            'Bucket'     => $this->cfg['bucket'],
+            'Key'        => $file_key,
+            'UploadId'   => $info['UploadId'],
+            'PartNumber' => $partNumber,
+            'Body'       => $content
+        ]);
+
+        $blockStatus = ['ETag' => $resp['ETag'], 'PartNumber' => $partNumber];
+        $etags = $info['ETags'] ?? [];
+        array_push($etags, $blockStatus);
+        $this->savePartUploadInfo($file_key, ['ETags' => $etags]);
+    }
+
+    /**
+     * 分块上传：结束并生成文件
+     * @param string      $file_key 文件路径标识
+     * @param string|null $fname    原文件名
+     * @param string|null $mimeType 指定Mime
+     * @return array 返回保存文件的相关信息
+     */
+    public function uploadLargeComplete(string $file_key, string $fname = null, string $mimeType = null): array
+    {
+        $info = $this->getPartUploadInfo($file_key);
+        $this->assertHasKey($info, 'UploadId');
+        $this->assertHasKey($info, 'ETags');
+
+        $result = $this->obsClient->completeMultipartUpload([
+            'Bucket'   => $this->cfg['bucket'],
+            'Key'      => $file_key,
+            'UploadId' => $info['UploadId'],
+            'Parts'    => $info['ETags'],
+        ]);
+
+        $this->deletPartUploadInfo($file_key);
+
+        return [
+            'file_key' => $file_key,
+            'fname'    => $fname,
+            'mimeType' => $mimeType,
+            'extend'   => $result
+        ];
+    }
+
+    /**
+     * 终止上传
+     * @param string $file_key 文件路径标识
+     */
+    public function uploadLargeAbort(string $file_key)
+    {
+        $info = $this->getPartUploadInfo($file_key);
+        $this->assertHasKey($info, 'UploadId');
+
+        $this->obsClient->abortMultipartUpload([
+            'Bucket'   => $this->cfg['bucket'],
+            'Key'      => $file_key,
+            'UploadId' => $info['UploadId'],
+        ]);
+
+        $this->deletPartUploadInfo($file_key);
     }
 
     /**
@@ -359,7 +459,7 @@ class HuaWei extends UploadAbstract implements UploadHandler
      * @param string|null $file_key  文件路径标识
      * @return array
      */
-    public function uploadLargeParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array
+    public function uploadParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array
     {
         if (is_null($file_key)) {
             if ($extension) {
@@ -416,106 +516,6 @@ class HuaWei extends UploadAbstract implements UploadHandler
             'extend'    => $stat
         ];
         return $data;
-    }
-
-    /**
-     * 分块上传：初始化
-     * @param string|null $file_key 文件路径标识，不指定则自动生成
-     * @param string|null $type     指定类型
-     * @return string 返回文件路径标识
-     */
-    public function uploadLargeInit(string $file_key = null, string $type = null): string
-    {
-        if (is_null($file_key)) {
-            $save_name = uniqid();
-            $sdir = $this->getSaveDir($type);
-            $file_key = $sdir . '/' . $save_name;
-        }
-
-        $resp = $this->obsClient->initiateMultipartUpload([
-            'Bucket' => $this->cfg['bucket'],
-            'Key'    => $file_key
-        ]);
-        $this->savePartUploadInfo($file_key, (array)$resp);
-
-        return $file_key;
-    }
-
-    /**
-     * 分块上传：上传块
-     * @param string $file_key 文件路径标识
-     * @param string $content  块内容
-     */
-    public function uploadLargePart(string $file_key, string $content)
-    {
-        $info = $this->getPartUploadInfo($file_key);
-        $this->assertHasKey($info, 'UploadId');
-        if (isset($info['ETags'])) {
-            $partNumber = (end($info['ETags']))['PartNumber'] + 1;
-        } else {
-            $partNumber = 1;
-        }
-
-        $resp = $this->obsClient->uploadPart([
-            'Bucket'     => $this->cfg['bucket'],
-            'Key'        => $file_key,
-            'UploadId'   => $info['UploadId'],
-            'PartNumber' => $partNumber,
-            'Body'       => $content
-        ]);
-
-        $blockStatus = ['ETag' => $resp['ETag'], 'PartNumber' => $partNumber];
-        $etags = $info['ETags'] ?? [];
-        array_push($etags, $blockStatus);
-        $this->savePartUploadInfo($file_key, ['ETags' => $etags]);
-    }
-
-    /**
-     * 分块上传：结束并生成文件
-     * @param string      $file_key 文件路径标识
-     * @param string|null $fname    原文件名
-     * @param string|null $mimeType 指定Mime
-     * @return array 返回保存文件的相关信息
-     */
-    public function uploadLargeComplete(string $file_key, string $fname = null, string $mimeType = null): array
-    {
-        $info = $this->getPartUploadInfo($file_key);
-        $this->assertHasKey($info, 'UploadId');
-        $this->assertHasKey($info, 'ETags');
-
-        $result = $this->obsClient->completeMultipartUpload([
-            'Bucket'   => $this->cfg['bucket'],
-            'Key'      => $file_key,
-            'UploadId' => $info['UploadId'],
-            'Parts'    => $info['ETags'],
-        ]);
-
-        $this->deletPartUploadInfo($file_key);
-
-        return [
-            'file_key' => $file_key,
-            'fname'    => $fname,
-            'mimeType' => $mimeType,
-            'extend'   => $result
-        ];
-    }
-
-    /**
-     * 终止上传
-     * @param string $file_key 文件路径标识
-     */
-    public function uploadLargeAbort(string $file_key)
-    {
-        $info = $this->getPartUploadInfo($file_key);
-        $this->assertHasKey($info, 'UploadId');
-
-        $this->obsClient->abortMultipartUpload([
-            'Bucket'   => $this->cfg['bucket'],
-            'Key'      => $file_key,
-            'UploadId' => $info['UploadId'],
-        ]);
-
-        $this->deletPartUploadInfo($file_key);
     }
 
     /**

@@ -76,38 +76,7 @@ interface UploadHandler
      * @param string|null $file_key  文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function uploadFromUrl(string $url, string $extension = null, string $type = null, string $file_key = null): array;
-
-    /**
-     * 大文件分片上传
-     *
-     * 参数 `$file_key`：当 $blob_index 为0时填 null 表示自动生成，不为 0 时必填。指定该参数后，参数 $type 无效。
-     * 参数 `$extension`：不指定则根据MIME进行猜测
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * @param string      $name       文件域表单名
-     * @param int         $blob_index 当前分片下标
-     * @param int         $blob_count 分片总数量
-     * @param string|null $file_key   文件路径标识
-     * @param string|null $extension  后缀名
-     * @param string|null $type       指定类型
-     *
-     * @return array
-     */
-    public function uploadLarge(string $name, int $blob_index, int $blob_count, string $file_key = null, string $extension = null, string $type = null): array;
-
-    /**
-     * 上传多个分块并合并成文件
-     *
-     * 参数 `$extension`：不指定则根据URL、MIME进行猜测
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param array       $parts     分块数组
-     * @param string|null $extension 后缀名
-     * @param string|null $type      指定类型
-     * @param string|null $file_key  文件路径标识
-     * @return array
-     */
-    public function uploadLargeParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array;
+    public function uploadRemote(string $url, string $extension = null, string $type = null, string $file_key = null): array;
 
     /**
      * 分块上传：初始化
@@ -138,6 +107,37 @@ interface UploadHandler
      * @param string $file_key 文件路径标识
      */
     public function uploadLargeAbort(string $file_key);
+
+    /**
+     * 大文件分片上传
+     *
+     * 参数 `$file_key`：当 $blob_index 为0时填 null 表示自动生成，不为 0 时必填。指定该参数后，参数 $type 无效。
+     * 参数 `$extension`：不指定则根据MIME进行猜测
+     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
+     * @param string      $name       文件域表单名
+     * @param int         $blob_index 当前分片下标
+     * @param int         $blob_count 分片总数量
+     * @param string|null $file_key   文件路径标识
+     * @param string|null $extension  后缀名
+     * @param string|null $type       指定类型
+     *
+     * @return array
+     */
+    public function uploadLarge(string $name, int $blob_index, int $blob_count, string $file_key = null, string $extension = null, string $type = null): array;
+
+    /**
+     * 上传多个分块并合并成文件
+     *
+     * 参数 `$extension`：不指定则根据URL、MIME进行猜测
+     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
+     * 参数 `$file_key`：指定该参数后，参数 $type 无效
+     * @param array       $parts     分块数组
+     * @param string|null $extension 后缀名
+     * @param string|null $type      指定类型
+     * @param string|null $file_key  文件路径标识
+     * @return array
+     */
+    public function uploadParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array;
 
     /**
      * 返回已授权的URL
