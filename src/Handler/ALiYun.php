@@ -412,10 +412,11 @@ class ALiYun extends UploadAbstract implements UploadHandler
         $this->uploadLargeComplete($file_key);
 
         $stat = $this->ossClient->getObjectMeta($this->cfg['bucket'], $file_key);
+        $stat = array_change_key_case($stat);
 
         // 没指定后缀名的情况下进行后缀名猜测并重命名该文件
         if (empty($extension)) {
-            $extension = (new Mime($stat['Content-Type']))->getExtension();
+            $extension = (new Mime($stat['content-type']))->getExtension();
             if ($extension) {
                 $old_file_key = $file_key;
                 $file_key = $file_key . '.' . $extension;
@@ -432,10 +433,10 @@ class ALiYun extends UploadAbstract implements UploadHandler
             'url'       => $url,
             'path'      => $path,
             'extension' => $extension,
-            'file_size' => $stat['Content-Length'],
-            'mime_type' => $stat['Content-Type'],
+            'file_size' => $stat['content-length'],
+            'mime_type' => $stat['content-type'],
             'storage'   => 'AliYun',
-            'sha1'      => $stat['ETag'],
+            'sha1'      => $stat['etag'],
             'extend'    => $stat
         ];
         return $data;
