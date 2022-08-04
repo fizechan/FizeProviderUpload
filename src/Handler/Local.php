@@ -528,6 +528,7 @@ class Local extends UploadAbstract implements UploadHandler
         $url = $domain . '/' . $full_path;
 
         $data = [
+            'file_key'      => $file_key,
             'original_name' => $originalName,
             'url'           => $url,
             'path'          => $path,

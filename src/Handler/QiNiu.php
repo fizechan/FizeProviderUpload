@@ -537,6 +537,7 @@ class QiNiu extends UploadAbstract implements UploadHandler
             throw new FileException($err);
         }
         $data = [
+            'file_key'      => $file_key,
             'original_name' => $originalName,
             'url'           => $url,
             'path'          => $path,

@@ -599,6 +599,7 @@ class HuaWei extends UploadAbstract implements UploadHandler
         ]);
 
         $data = [
+            'file_key'      => $file_key,
             'original_name' => $originalName,
             'url'           => $url,
             'path'          => $path,

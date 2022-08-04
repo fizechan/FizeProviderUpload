@@ -122,6 +122,7 @@ class PingAn extends UploadAbstract implements UploadHandler
         }
 
         $data = [
+            'file_key'      => $file_key,
             'url' => $url,
             'path' => $path,
             'extension' => self::$saveFile->getExtension(),

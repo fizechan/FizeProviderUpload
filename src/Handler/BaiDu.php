@@ -579,6 +579,7 @@ class BaiDu extends UploadAbstract implements UploadHandler
         $this->ossClient->uploadFile($this->cfg['bucket'], $file_key, $save_file);
 
         $data = [
+            'file_key'      => $file_key,
             'original_name' => $originalName,
             'url'           => $url,
             'path'          => $path,
