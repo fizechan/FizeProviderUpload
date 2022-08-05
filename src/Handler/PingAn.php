@@ -155,6 +155,65 @@ class PingAn extends UploadAbstract implements UploadHandler
     }
 
     /**
+     * 上传本地文件
+     *
+     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
+     * 参数 `$file_key`：指定该参数后，参数 $type 无效
+     * @param string      $file_path 服务器端文件路径
+     * @param string|null $type      指定类型
+     * @param string|null $file_key  文件路径标识
+     * @return array 返回保存文件的相关信息
+     */
+    public function uploadFile(string $file_path, string $type = null, string $file_key = null): array
+    {
+        $config = $this->config;
+        $ym = date('Ym');
+        $dy = date('d');
+
+        $orig_file = new File($file_path);
+        $suffix = strtolower($orig_file->getExtension());
+        $save_name = uniqid() . '.' . $suffix;
+        $save_file = Env::get('runtime_path') . 'uploads/' . $save_name;
+        copy($file_path, $save_file);
+
+        $imagewidth = 0;
+        $imageheight = 0;
+        if (in_array($suffix, Config::get('upload.ext.image'))) {
+            self::imagerotateAuto($save_file, null, true);
+            $imgInfo = getimagesize($save_file);
+            $imagewidth = $imgInfo[0] ?? 0;
+            $imageheight = $imgInfo[1] ?? 0;
+        }
+
+        $file_key = $ym . '/' . $dy . '/' . $save_name;
+        $path = $file_key;
+
+        $obs = new Obs($config['accessKey'], $config['secretKey']);
+        $obs->setInternalUpload($config['internalUpload']);
+        $obs->setBucket($config['bucket']);
+        $url = $obs->putObject($save_file, $file_key);
+        if ($url === false) {
+            return [Upload::ERRCODE_UPLOAD_FAILED, '上传文件时发生错误', null];
+        }
+
+        $data = [
+            'url' => $url,
+            'path' => $path,
+            'extension' => $suffix,
+            'imagewidth' => $imagewidth,
+            'imageheight' => $imageheight,
+            'imagetype' => $suffix,
+            'imageframes' => 0,
+            'filesize' => filesize($save_file),
+            'mimetype' => Upload::getMimeType($save_file),
+            'storage' => 'PingAn',
+            'sha1' => hash_file('sha1', $save_file)
+        ];
+        unlink($save_file);
+        return [0, '上传成功', $data];
+    }
+
+    /**
      * 上传base64串生成文件并保存
      *
      * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
@@ -223,65 +282,6 @@ class PingAn extends UploadAbstract implements UploadHandler
             'imagetype' => $suffix,
             'imageframes' => 0,
             'filesize' => $file->getInfo('size'),
-            'mimetype' => Upload::getMimeType($save_file),
-            'storage' => 'PingAn',
-            'sha1' => hash_file('sha1', $save_file)
-        ];
-        unlink($save_file);
-        return [0, '上传成功', $data];
-    }
-
-    /**
-     * 上传本地文件
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $file_path 服务器端文件路径
-     * @param string|null $type      指定类型
-     * @param string|null $file_key  文件路径标识
-     * @return array 返回保存文件的相关信息
-     */
-    public function uploadFile(string $file_path, string $type = null, string $file_key = null): array
-    {
-        $config = $this->config;
-        $ym = date('Ym');
-        $dy = date('d');
-
-        $orig_file = new File($file_path);
-        $suffix = strtolower($orig_file->getExtension());
-        $save_name = uniqid() . '.' . $suffix;
-        $save_file = Env::get('runtime_path') . 'uploads/' . $save_name;
-        copy($file_path, $save_file);
-
-        $imagewidth = 0;
-        $imageheight = 0;
-        if (in_array($suffix, Config::get('upload.ext.image'))) {
-            self::imagerotateAuto($save_file, null, true);
-            $imgInfo = getimagesize($save_file);
-            $imagewidth = $imgInfo[0] ?? 0;
-            $imageheight = $imgInfo[1] ?? 0;
-        }
-
-        $file_key = $ym . '/' . $dy . '/' . $save_name;
-        $path = $file_key;
-
-        $obs = new Obs($config['accessKey'], $config['secretKey']);
-        $obs->setInternalUpload($config['internalUpload']);
-        $obs->setBucket($config['bucket']);
-        $url = $obs->putObject($save_file, $file_key);
-        if ($url === false) {
-            return [Upload::ERRCODE_UPLOAD_FAILED, '上传文件时发生错误', null];
-        }
-
-        $data = [
-            'url' => $url,
-            'path' => $path,
-            'extension' => $suffix,
-            'imagewidth' => $imagewidth,
-            'imageheight' => $imageheight,
-            'imagetype' => $suffix,
-            'imageframes' => 0,
-            'filesize' => filesize($save_file),
             'mimetype' => Upload::getMimeType($save_file),
             'storage' => 'PingAn',
             'sha1' => hash_file('sha1', $save_file)

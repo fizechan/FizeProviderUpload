@@ -76,6 +76,58 @@ class QiNiu extends UploadAbstract implements UploadHandler
     }
 
     /**
+     * 上传本地文件
+     *
+     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
+     * 参数 `$file_key`：指定该参数后，参数 $type 无效
+     * @param string      $file_path 服务器端文件路径
+     * @param string|null $type      指定类型
+     * @param string|null $file_key  文件路径标识
+     * @return array 返回保存文件的相关信息
+     */
+    public function uploadFile(string $file_path, string $type = null, string $file_key = null): array
+    {
+        $file = new Fso($file_path);
+        $extension = $file->getExtensionPossible();
+        [$imagewidth, $imageheight] = $this->getImageSize($file_path, $extension);  // 文件直传故不进行图片压缩
+
+        if (is_null($file_key)) {
+            if ($extension) {
+                $save_name = uniqid() . '.' . $extension;
+            } else {
+                $save_name = uniqid();
+            }
+            $sdir = $this->getSaveDir($type);
+            $file_key = $sdir . '/' . $save_name;
+        }
+        $path = $file_key;
+        $domain = $this->cfg['domain'];
+        $url = $domain . '/' . $file_key;
+
+        $token = $this->getUploadToken();
+        $uploadMgr = new UploadManager();
+        [$ret, $err] = $uploadMgr->putFile($token, $file_key, $file_path, null, 'application/octet-stream', false, null, $this->cfg['version']);
+        if ($err !== null) {
+            throw new FileException($err);
+        }
+
+        $data = [
+            'original_name' => basename($file_path),
+            'url'           => $url,
+            'path'          => $path,
+            'extension'     => $extension,
+            'image_width'   => $imagewidth,
+            'image_height'  => $imageheight,
+            'file_size'     => $file->getInfo('size'),
+            'mime_type'     => $file->getMime(),
+            'storage'       => 'QiNiu',
+            'sha1'          => hash_file('sha1', $file_path),
+            'extend'        => $ret  // 额外信息
+        ];
+        return $data;
+    }
+
+    /**
      * 上传base64串生成文件并保存
      *
      * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
@@ -137,58 +189,6 @@ class QiNiu extends UploadAbstract implements UploadHandler
             'extend'       => $ret  // 额外信息
         ];
         unlink($save_file);  // 已上传到OBS，删除本地文件
-        return $data;
-    }
-
-    /**
-     * 上传本地文件
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $file_path 服务器端文件路径
-     * @param string|null $type      指定类型
-     * @param string|null $file_key  文件路径标识
-     * @return array 返回保存文件的相关信息
-     */
-    public function uploadFile(string $file_path, string $type = null, string $file_key = null): array
-    {
-        $file = new Fso($file_path);
-        $extension = $file->getExtensionPossible();
-        [$imagewidth, $imageheight] = $this->getImageSize($file_path, $extension);  // 文件直传故不进行图片压缩
-
-        if (is_null($file_key)) {
-            if ($extension) {
-                $save_name = uniqid() . '.' . $extension;
-            } else {
-                $save_name = uniqid();
-            }
-            $sdir = $this->getSaveDir($type);
-            $file_key = $sdir . '/' . $save_name;
-        }
-        $path = $file_key;
-        $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $file_key;
-
-        $token = $this->getUploadToken();
-        $uploadMgr = new UploadManager();
-        [$ret, $err] = $uploadMgr->putFile($token, $file_key, $file_path, null, 'application/octet-stream', false, null, $this->cfg['version']);
-        if ($err !== null) {
-            throw new FileException($err);
-        }
-
-        $data = [
-            'original_name' => basename($file_path),
-            'url'           => $url,
-            'path'          => $path,
-            'extension'     => $extension,
-            'image_width'   => $imagewidth,
-            'image_height'  => $imageheight,
-            'file_size'     => $file->getInfo('size'),
-            'mime_type'     => $file->getMime(),
-            'storage'       => 'QiNiu',
-            'sha1'          => hash_file('sha1', $file_path),
-            'extend'        => $ret  // 额外信息
-        ];
         return $data;
     }
 
@@ -411,7 +411,7 @@ class QiNiu extends UploadAbstract implements UploadHandler
      * @param string|null $file_key  文件路径标识
      * @return array
      */
-    public function uploadLargeParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array
+    public function uploadParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array
     {
         if (is_null($file_key)) {
             if ($extension) {

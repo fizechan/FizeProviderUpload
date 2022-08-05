@@ -25,7 +25,7 @@
   },
   "autoload-dev": {
     "files": [
-      "third/BaiduBce.phar"
+      "extend/BaiduBce.phar"
     ],
     "psr-4": {
       "Tests\\": "tests"

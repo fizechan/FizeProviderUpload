@@ -71,6 +71,63 @@ class Local extends UploadAbstract implements UploadHandler
     }
 
     /**
+     * 上传本地文件
+     *
+     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
+     * 参数 `$file_key`：指定该参数后，参数 $type 无效
+     * @param string      $file_path 服务器端文件路径
+     * @param string|null $type      指定类型
+     * @param string|null $file_key  文件路径标识
+     * @return array 返回保存文件的相关信息
+     */
+    public function uploadFile(string $file_path, string $type = null, string $file_key = null): array
+    {
+        $orig_file = new File($file_path);
+        $extension = strtolower($orig_file->getExtension());
+        unset($orig_file);
+
+        [$file_key, $dir, $save_name, $save_file] = $this->getPathInfo($file_key, $type, $extension);
+        $fso = new File($save_file, 'w');
+        $result = $fso->fwrite(file_get_contents($file_path));
+        if ($result === false) {
+            throw new FileException('上传失败');
+        }
+        $mime = $fso->getMime();
+        unset($fso);
+
+        if (empty($extension)) {
+            [$save_file, $file_key] = $this->handleNoExtensionFile($dir, $save_name, $file_key);
+        }
+
+        $path = $file_key;
+        $full_path = $this->cfg['dir'] . '/' . $path;
+
+        $domain = $this->cfg['domain'];
+        $domain = $domain ?: Request::domain();
+        $url = $domain . '/' . $full_path;
+
+        [$imagewidth, $imageheight] = $this->getImageSize($save_file, $extension);  // 文件直传故不进行图片压缩
+
+        $data = [
+            'original_name' => basename($file_path),
+            'url'           => $url,
+            'path'          => $path,
+            'extension'     => $extension,
+            'image_width'   => $imagewidth,
+            'image_height'  => $imageheight,
+            'file_size'     => filesize($save_file),
+            'mime_type'     => $mime,
+            'storage'       => 'Local',
+            'sha1'          => hash_file('sha1', $save_file),
+            'extend'        => [
+                'original_path' => realpath($file_path),
+                'full_path'     => $full_path,
+            ]
+        ];
+        return $data;
+    }
+
+    /**
      * 上传base64串生成文件并保存
      *
      * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
@@ -124,63 +181,6 @@ class Local extends UploadAbstract implements UploadHandler
             'extend'       => [
                 'full_path' => $full_path
             ]  // 额外信息
-        ];
-        return $data;
-    }
-
-    /**
-     * 上传本地文件
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $file_path 服务器端文件路径
-     * @param string|null $type      指定类型
-     * @param string|null $file_key  文件路径标识
-     * @return array 返回保存文件的相关信息
-     */
-    public function uploadFile(string $file_path, string $type = null, string $file_key = null): array
-    {
-        $orig_file = new File($file_path);
-        $extension = strtolower($orig_file->getExtension());
-        unset($orig_file);
-
-        [$file_key, $dir, $save_name, $save_file] = $this->getPathInfo($file_key, $type, $extension);
-        $fso = new File($save_file, 'w');
-        $result = $fso->fwrite(file_get_contents($file_path));
-        if ($result === false) {
-            throw new FileException('上传失败');
-        }
-        $mime = $fso->getMime();
-        unset($fso);
-
-        if (empty($extension)) {
-            [$save_file, $file_key] = $this->handleNoExtensionFile($dir, $save_name, $file_key);
-        }
-
-        $path = $file_key;
-        $full_path = $this->cfg['dir'] . '/' . $path;
-
-        $domain = $this->cfg['domain'];
-        $domain = $domain ?: Request::domain();
-        $url = $domain . '/' . $full_path;
-
-        [$imagewidth, $imageheight] = $this->getImageSize($save_file, $extension);  // 文件直传故不进行图片压缩
-
-        $data = [
-            'original_name' => basename($file_path),
-            'url'           => $url,
-            'path'          => $path,
-            'extension'     => $extension,
-            'image_width'   => $imagewidth,
-            'image_height'  => $imageheight,
-            'file_size'     => filesize($save_file),
-            'mime_type'     => $mime,
-            'storage'       => 'Local',
-            'sha1'          => hash_file('sha1', $save_file),
-            'extend'        => [
-                'original_path' => realpath($file_path),
-                'full_path'     => $full_path,
-            ]
         ];
         return $data;
     }

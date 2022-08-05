@@ -41,18 +41,6 @@ interface UploadHandler
     public function uploads(string $name, string $type = null, array $file_keys = null): array;
 
     /**
-     * 上传base64串生成文件并保存
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $base64_centent base64串
-     * @param string|null $type           指定类型
-     * @param string|null $file_key       文件路径标识
-     * @return array 返回保存文件的相关信息
-     */
-    public function uploadBase64(string $base64_centent, string $type = null, string $file_key = null): array;
-
-    /**
      * 上传本地文件
      *
      * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
@@ -63,6 +51,18 @@ interface UploadHandler
      * @return array 返回保存文件的相关信息
      */
     public function uploadFile(string $file_path, string $type = null, string $file_key = null): array;
+
+    /**
+     * 上传base64串生成文件并保存
+     *
+     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
+     * 参数 `$file_key`：指定该参数后，参数 $type 无效
+     * @param string      $base64_centent base64串
+     * @param string|null $type           指定类型
+     * @param string|null $file_key       文件路径标识
+     * @return array 返回保存文件的相关信息
+     */
+    public function uploadBase64(string $base64_centent, string $type = null, string $file_key = null): array;
 
     /**
      * 上传远程文件
