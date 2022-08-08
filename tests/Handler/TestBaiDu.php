@@ -67,6 +67,15 @@ class TestBaiDu extends TestCase
         // 需要在HTTP环境下测试
     }
 
+    public function testUploadFile()
+    {
+        $uploader = new BaiDu($this->config, [], $this->tempDir);
+        $file_path = 'H:\todo\组合查询2.png';
+        $data = $uploader->uploadFile($file_path);
+        var_dump($data);
+        self::assertIsArray($data);
+    }
+
     public function testUploadBase64()
     {
         $root = dirname(__FILE__, 3);
@@ -77,54 +86,27 @@ class TestBaiDu extends TestCase
         self::assertIsArray($result);
     }
 
-    public function testUploadFile()
-    {
-        $uploader = new BaiDu($this->config, [], $this->tempDir);
-        $file_path = 'H:\todo\组合查询2.png';
-        $data = $uploader->uploadFile($file_path);
-        var_dump($data);
-        self::assertIsArray($data);
-    }
-
-    public function testUploadFromUrl()
+    public function testUploadRemote()
     {
         $url = 'https://e.topthink.com/api/item/782/pic';
         $uploader = new BaiDu($this->config, [], $this->tempDir);
-        $result = $uploader->uploadFromUrl($url);
-        var_dump($result);
-        self::assertIsArray($result);
-    }
-
-    public function testUploadLarge()
-    {
-        // 需要在HTTP环境下测试
-    }
-
-    public function testUploadLargeParts()
-    {
-        $parts = [];
-        $parts[] = file_get_contents('H:\work\FuLi\commons\code\commons-third\temp\PMBOK.pdf.1.part');
-        $parts[] = file_get_contents('H:\work\FuLi\commons\code\commons-third\temp\PMBOK.pdf.2.part');
-        $parts[] = file_get_contents('H:\work\FuLi\commons\code\commons-third\temp\PMBOK.pdf.3.part');
-        $parts[] = file_get_contents('H:\work\FuLi\commons\code\commons-third\temp\PMBOK.pdf.4.part');
-        $uploader = new BaiDu($this->config, [], $this->tempDir);
-        $result = $uploader->uploadLargeParts($parts, 'pdf');
+        $result = $uploader->uploadRemote($url);
         var_dump($result);
         self::assertIsArray($result);
     }
 
     public function testUploadLargeInit()
     {
-        $uploader = new BaiDu();
-        $file_key = $uploader->uploadLargeInit('uploadLargePMP22.pdf');
+        $uploader = new BaiDu($this->config, [], $this->tempDir);
+        $file_key = $uploader->uploadLargeInit('uploadLargePMP23.pdf');
         var_dump($file_key);
         self::assertIsString($file_key);
     }
 
     public function testUploadLargePart()
     {
-        $file_key = 'uploadLargePMP22.pdf';
-        $uploader = new BaiDu();
+        $file_key = 'uploadLargePMP21.pdf';
+        $uploader = new BaiDu($this->config, [], $this->tempDir);
         $uploader->uploadLargePart($file_key, file_get_contents('H:\work\FuLi\commons\code\commons-third\temp\PMBOK2.pdf.1.part'));
         $uploader->uploadLargePart($file_key, file_get_contents('H:\work\FuLi\commons\code\commons-third\temp\PMBOK2.pdf.2.part'));
         self::assertTrue(true);
@@ -132,8 +114,8 @@ class TestBaiDu extends TestCase
 
     public function testUploadLargeComplete()
     {
-        $file_key = 'uploadLargePMP2.pdf';
-        $uploader = new BaiDu();
+        $file_key = 'uploadLargePMP21.pdf';
+        $uploader = new BaiDu($this->config, [], $this->tempDir);
         $result = $uploader->uploadLargeComplete($file_key);
         var_dump($result);
         self::assertIsArray($result);
@@ -141,18 +123,38 @@ class TestBaiDu extends TestCase
 
     public function testUploadLargeAbort()
     {
-        $file_key = 'uploadLargePMP2.pdf';
-        $uploader = new BaiDu();
+        $file_key = 'uploadLargePMP23.pdf';
+        $uploader = new BaiDu($this->config, [], $this->tempDir);
         $uploader->uploadLargeAbort($file_key);
         self::assertTrue(true);
     }
 
+    public function testUploadLarge()
+    {
+        // 需要在HTTP环境下测试
+    }
+
+    public function testUploadParts()
+    {
+        $parts = [];
+        $parts[] = file_get_contents('H:\work\FuLi\commons\code\commons-third\temp\PMBOK.pdf.1.part');
+        $parts[] = file_get_contents('H:\work\FuLi\commons\code\commons-third\temp\PMBOK.pdf.2.part');
+        $parts[] = file_get_contents('H:\work\FuLi\commons\code\commons-third\temp\PMBOK.pdf.3.part');
+        $parts[] = file_get_contents('H:\work\FuLi\commons\code\commons-third\temp\PMBOK.pdf.4.part');
+        $uploader = new BaiDu($this->config, [], $this->tempDir);
+        $result = $uploader->uploadParts($parts, 'pdf');
+        var_dump($result);
+        self::assertIsArray($result);
+    }
+
     public function testGetAuthorizedUrl()
     {
-        $uploader = new BaiDu();
-        $url = 'https://grz-qcjr-dev.oss-cn-hangzhou.aliyuncs.com/202207/19/62d6222265303.jpg';
+        $config = $this->config;
+        $config['private'] = true;
+        $uploader = new BaiDu($config, [], $this->tempDir);
+        $url = 'https://grz-qcjr-dev.bj.bcebos.com/202208/08/62f079a621c2f.png';
         $url2 = $uploader->getAuthorizedUrl($url, 3600 * 24 * 365 * 100);
         var_dump($url2);
-        self::assertEquals($url2, $url);
+        self::assertNotEquals($url2, $url);
     }
 }

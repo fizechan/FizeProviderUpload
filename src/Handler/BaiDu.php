@@ -125,8 +125,14 @@ class BaiDu extends UploadAbstract implements UploadHandler
         $path = $file_key;
         $domain = $this->cfg['domain'];
         $url = $domain . '/' . $file_key;
-
-        $this->bosClient->putObjectFromFile($this->cfg['bucket'], $file_key, $file_path);
+        $file_size = $file->getSize();
+        $mime_type = $file->getMime();
+        unset($file);
+        $options = [];
+        if ($mime_type) {
+            $options[BosOptions::CONTENT_TYPE] = $mime_type;
+        }
+        $this->bosClient->putObjectFromFile($this->cfg['bucket'], $file_key, $file_path, $options);
 
         $data = [
             'url'          => $url,
@@ -134,8 +140,8 @@ class BaiDu extends UploadAbstract implements UploadHandler
             'extension'    => $extension,
             'image_width'  => $imagewidth,
             'image_height' => $imageheight,
-            'file_size'    => $file->getSize(),
-            'mime_type'    => $file->getMime(),
+            'file_size'    => $file_size,
+            'mime_type'    => $mime_type,
             'sha1'         => hash_file('sha1', $file_path),
             'extend'       => [
                 'original_name' => basename($file_path)
@@ -188,7 +194,10 @@ class BaiDu extends UploadAbstract implements UploadHandler
         $domain = $this->cfg['domain'];
         $url = $domain . '/' . $file_key;
 
-        $this->bosClient->putObjectFromFile($this->cfg['bucket'], $file_key, $save_file);
+        $options = [
+            BosOptions::CONTENT_TYPE => $mime
+        ];
+        $this->bosClient->putObjectFromFile($this->cfg['bucket'], $file_key, $save_file, $options);
 
         $data = [
             'url'          => $url,
@@ -259,8 +268,15 @@ class BaiDu extends UploadAbstract implements UploadHandler
             $sdir = $this->getSaveDir($type);
             $file_key = $sdir . '/' . $save_name;
         }
-
-        $response = $this->bosClient->initiateMultipartUpload($this->cfg['bucket'], $file_key);
+        $options = [];
+        $extension = pathinfo($file_key, PATHINFO_EXTENSION);
+        if ($extension) {
+            $file_mime = Mime::getByExtension($extension);
+            if ($file_mime) {
+                $options[BosOptions::CONTENT_TYPE] = $file_mime;
+            }
+        }
+        $response = $this->bosClient->initiateMultipartUpload($this->cfg['bucket'], $file_key, $options);
         $uploadId = $response->uploadId;
         $this->savePartUploadInfo($file_key, ['uploadId' => $uploadId, 'tempName' => uniqid()]);
 
@@ -313,8 +329,6 @@ class BaiDu extends UploadAbstract implements UploadHandler
         $this->assertHasKey($info, 'uploadId');
         $this->assertHasKey($info, 'eTags');
 
-        $this->bosClient->completeMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId'], $info['eTags']);
-
         $temp_file = $this->tempDir . '/' . $info['tempName'];
         $tempFile = new File($temp_file);
         $extension = pathinfo($file_key, PATHINFO_EXTENSION);
@@ -324,16 +338,19 @@ class BaiDu extends UploadAbstract implements UploadHandler
         if (empty($extension)) {
             $extension = $tempFile->getExtension();
         }
+        $file_size = $tempFile->getSize();
+        $file_mime = $tempFile->getMime();
+        unset($tempFile);
+        $options = [];
+        if ($file_mime) {
+            $options[BosOptions::CONTENT_TYPE] = $file_mime;
+        }
+        $this->bosClient->completeMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId'], $info['eTags'], $options);
 
         $path = $file_key;
         $domain = $this->cfg['domain'];
         $url = $domain . '/' . $file_key;
-        [$imagewidth, $imageheight] = $this->imageResize($temp_file, $extension);
-
-        $file_size = $tempFile->getSize();
-        $file_mime = $tempFile->getMime();
         $sha1 = hash_file('sha1', $temp_file);
-
         unlink($temp_file);
         $this->deletPartUploadInfo($file_key);
 
@@ -341,13 +358,13 @@ class BaiDu extends UploadAbstract implements UploadHandler
             'url'          => $url,
             'path'         => $path,
             'extension'    => $extension,
-            'image_width'  => $imagewidth,
-            'image_height' => $imageheight,
+            'image_width'  => 0,
+            'image_height' => 0,
             'file_size'    => $file_size,
             'mime_type'    => $file_mime,
             'sha1'         => $sha1,
             'extend'       => [
-                'fname' => $fname
+                'original_name' => $fname
             ]
         ];
     }
@@ -362,7 +379,9 @@ class BaiDu extends UploadAbstract implements UploadHandler
         $this->assertHasKey($info, 'uploadId');
         $this->bosClient->abortMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId']);
         $temp_file = $this->tempDir . '/' . $info['tempName'];
-        unlink($temp_file);
+        if (is_file($temp_file)) {
+            unlink($temp_file);
+        }
         $this->deletPartUploadInfo($file_key);
     }
 
@@ -483,25 +502,27 @@ class BaiDu extends UploadAbstract implements UploadHandler
         $path = $file_key;
         [$imagewidth, $imageheight] = $this->imageResize($temp_file, $extension);
 
-        $options = [
-            BosOptions::PART_SIZE => 2 * 1024 * 1024
-        ];
-        $this->bosClient->putSuperObjectFromFile($this->cfg['bucket'], $file_key, $temp_file, $options);
-
         $tempFile = new File($temp_file);
         $tempFile->clearstatcache();
+        $file_size = $tempFile->getSize();
+        $mime_type = $tempFile->getMime();
+        unset($tempFile);
+        $options = [];
+        if ($mime_type) {
+            $options[BosOptions::CONTENT_TYPE] = $mime_type;
+        }
+        $this->bosClient->putSuperObjectFromFile($this->cfg['bucket'], $file_key, $temp_file, $options);
         $data = [
             'url'          => $url,
             'path'         => $path,
             'extension'    => $extension,
             'image_width'  => $imagewidth,
             'image_height' => $imageheight,
-            'file_size'    => $tempFile->getSize(),
-            'mime_type'    => $tempFile->getMime(),
+            'file_size'    => $file_size,
+            'mime_type'    => $mime_type,
             'sha1'         => hash_file('sha1', $temp_file),
             'extend'       => []
         ];
-        unset($tempFile);
         unlink($temp_file);
         return $data;
     }
@@ -514,12 +535,14 @@ class BaiDu extends UploadAbstract implements UploadHandler
      */
     public function getAuthorizedUrl(string $url, int $expires = 0): string
     {
-        if ($this->cfg['private']) {
+        if (isset($this->cfg['private']) && $this->cfg['private']) {
             $key = parse_url($url, PHP_URL_PATH);
             $key = substr($key, 1);  // 删除第一个【/】
             $options = [
-                SignOptions::TIMESTAMP             => new DateTime(),
-                SignOptions::EXPIRATION_IN_SECONDS => $expires,
+                BosOptions::SIGN_OPTIONS => [
+                    SignOptions::TIMESTAMP             => new DateTime(),
+                    SignOptions::EXPIRATION_IN_SECONDS => $expires,
+                ]
             ];
             $url = $this->bosClient->generatePreSignedUrl($this->cfg['bucket'], $key, $options);
         }
