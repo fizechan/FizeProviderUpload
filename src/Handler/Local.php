@@ -109,7 +109,6 @@ class Local extends UploadAbstract implements UploadHandler
         [$imagewidth, $imageheight] = $this->getImageSize($save_file, $extension);  // 文件直传故不进行图片压缩
 
         $data = [
-            'original_name' => basename($file_path),
             'url'           => $url,
             'path'          => $path,
             'extension'     => $extension,
@@ -120,6 +119,7 @@ class Local extends UploadAbstract implements UploadHandler
             'storage'       => 'Local',
             'sha1'          => hash_file('sha1', $save_file),
             'extend'        => [
+                'original_name' => basename($file_path),
                 'original_path' => realpath($file_path),
                 'full_path'     => $full_path,
             ]
