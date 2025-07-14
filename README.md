@@ -11,5 +11,9 @@
 - 七牛云(QiNiu)
 
 ## 使用指南
+- 推荐前端使用[Plupload](https://www.plupload.com/)进行文件上传。
 
 ### 本地存储(Local)
+
+## TODO
+- 上传图片处理独立出来。

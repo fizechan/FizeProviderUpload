@@ -3,6 +3,9 @@
 namespace Fize\Provider\Upload\Handler;
 
 use Fize\Exception\FileException;
+use Fize\Http\ServerRequest;
+use Fize\Http\ServerRequestFactory;
+use Fize\Http\UploadedFile;
 use Fize\IO\File;
 use Fize\IO\Mime;
 use Fize\Web\Request;
@@ -24,11 +27,25 @@ class Local extends UploadAbstract implements UploadHandler
      */
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null)
     {
-        $this->cfg = array_merge(Config::get('third.Local.upload'), $cfg);
-        $this->providerCfg = array_merge(Config::get('provider.upload'), $providerCfg);
+        $defaultCfg = [
+            'extensions'                          => 'jpg,png,gif,jpeg,bmp,txt,webp,xlsx',  // 可上传的文件后缀名，"*"表示支持所有文件。
+            'maxsize'                             => '10mb',                                // 最大可上传大小
+            'multiple'                            => false,                                 // 是否支持批量上传
+            'domain'                              => null,                                  //上传时指定文件URL主机域名。为null表示直接获取当前domain
+            'dir'                                 => 'uploads',                             //上传路径
+            'tempDir'                             => 'temp',                                // 临时文件路径
+            "max_upload_amount_per_minute_logged" => 60,
+            "max_upload_amount_per_hour_unlogged" => 1800,
+        ];
+        $this->cfg = array_merge($defaultCfg, $cfg);
+        $defaultProviderCfg = [
+            'image_max_size'  => 102400,                                // 最大图片文件大小，超过该大小才进行缩略
+            'image_max_width' => 1000,                                  // 最大图片宽度，超过该宽度将进行缩放至宽度2048
+        ];
+        $this->providerCfg = array_merge($defaultProviderCfg, $providerCfg);
 
         if (is_null($tempDir)) {
-            $tempDir = Config::get('filesystem.disks.temp.root') . '/uploads';
+            $tempDir = $this->cfg['tempDir'];
         }
         $this->tempDir = $tempDir;
     }
@@ -45,7 +62,10 @@ class Local extends UploadAbstract implements UploadHandler
      */
     public function upload(string $name, string $type = null, string $file_key = null): array
     {
-        $uploadFile = Request::file($name);
+        $srf = new ServerRequestFactory();
+        $request = $srf->createServerRequestFromGlobals();
+        $uploadFiles = $request->getUploadedFiles();
+        $uploadFile = $uploadFiles[$name];
         return $this->handleUpload($uploadFile, $type, $file_key);
     }
 
@@ -109,16 +129,15 @@ class Local extends UploadAbstract implements UploadHandler
         [$imagewidth, $imageheight] = $this->getImageSize($save_file, $extension);  // 文件直传故不进行图片压缩
 
         $data = [
-            'url'           => $url,
-            'path'          => $path,
-            'extension'     => $extension,
-            'image_width'   => $imagewidth,
-            'image_height'  => $imageheight,
-            'file_size'     => filesize($save_file),
-            'mime_type'     => $mime,
-            'storage'       => 'Local',
-            'sha1'          => hash_file('sha1', $save_file),
-            'extend'        => [
+            'url'          => $url,
+            'path'         => $path,
+            'extension'    => $extension,
+            'image_width'  => $imagewidth,
+            'image_height' => $imageheight,
+            'file_size'    => filesize($save_file),
+            'mime_type'    => $mime,
+            'sha1'         => hash_file('sha1', $save_file),
+            'extend'       => [
                 'original_name' => basename($file_path),
                 'original_path' => realpath($file_path),
                 'full_path'     => $full_path,
@@ -176,7 +195,6 @@ class Local extends UploadAbstract implements UploadHandler
             'image_height' => $imageheight,
             'file_size'    => $size,
             'mime_type'    => $mime,
-            'storage'      => 'Local',
             'sha1'         => hash_file('sha1', $save_file),
             'extend'       => [
                 'full_path' => $full_path
@@ -392,7 +410,6 @@ class Local extends UploadAbstract implements UploadHandler
             'extension' => $extension,
             'file_size' => filesize($save_file),
             'mime_type' => $mime,
-            'storage'   => 'Local',
             'sha1'      => hash_file('sha1', $save_file),
             'extend'    => [
                 'image_width'  => $imagewidth,
@@ -448,7 +465,6 @@ class Local extends UploadAbstract implements UploadHandler
             'extension' => $extension,
             'file_size' => filesize($save_file),
             'mime_type' => $mime,
-            'storage'   => 'Local',
             'sha1'      => hash_file('sha1', $save_file),
             'extend'    => [
                 'image_width'  => $imagewidth,
@@ -482,25 +498,23 @@ class Local extends UploadAbstract implements UploadHandler
      */
     protected function handleUpload(UploadedFile $uploadFile, string $type = null, string $file_key = null): array
     {
-        if (empty($uploadFile)) {
-            throw new FileException('没有找到要上传的文件');
+        $originalName = $uploadFile->getClientFilename();
+        if (is_null($originalName)) {
+            throw new FileException('文件错误！');
         }
-
-        $extension = $uploadFile->getOriginalExtension();
+        $mime = $uploadFile->getClientMediaType();
+        if (is_null($mime)) {
+            throw new FileException('无法识别文件！');
+        }
+        $extension = (new Mime($mime))->getExtension();
         if (empty($extension)) {
-            $fso = new File($uploadFile->getRealPath());
-            $mime = $fso->getMime();
-            $extension = (new Mime($mime))->getExtension();
-            if (empty($extension)) {
-                throw new FileException('禁止上传无后缀名的文件');
-            }
-            unset($fso);
+            throw new FileException('禁止上传无后缀名的文件');
         }
-        if (!in_array($extension, explode(',', $this->providerCfg['extensions']))) {
+        if (!in_array($extension, explode(',', $this->cfg['extensions']))) {
             throw new FileException("禁止上传后缀名为{$extension}的文件");
         }
 
-        $originalName = $uploadFile->getOriginalName();
+        $size = $uploadFile->getSize();
 
 
         if (is_null($file_key)) {
@@ -515,18 +529,14 @@ class Local extends UploadAbstract implements UploadHandler
         $save_path = Filesystem::disk('public')->putFileAs($dir, $uploadFile, $save_name);
         $save_file = Config::get('filesystem.disks.public.root') . '/' . $save_path;
 
+        $uploadFile->moveTo($save_file);
+
         [$imagewidth, $imageheight] = $this->imageResize($save_file, $extension);
-        $saveFile = new File($save_file);
-        $size = $saveFile->getSize();
-        $mime = $saveFile->getMime();
 
         $path = $file_key;
         $full_path = $this->cfg['dir'] . '/' . $path;
-
-        $domain = $this->cfg['domain'];
-        $domain = $domain ?: Request::domain();
+        $domain = $this->cfg['domain'] ?: Request::domain();
         $url = $domain . '/' . $full_path;
-
         $data = [
             'file_key'      => $file_key,
             'original_name' => $originalName,
@@ -537,9 +547,8 @@ class Local extends UploadAbstract implements UploadHandler
             'image_height'  => $imageheight,
             'file_size'     => $size,
             'mime_type'     => $mime,
-            'storage'       => 'Local',
             'sha1'          => hash_file('sha1', $save_file),
-            'extend'        => ['full_path' => $full_path]  // 额外信息
+            'full_path'     => $full_path
         ];
         return $data;
     }
