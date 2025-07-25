@@ -11,9 +11,13 @@
 - 七牛云(QiNiu)
 
 ## 使用指南
+- 推荐前端使用[Plupload](https://www.plupload.com/)进行文件上传。
 
 ### 本地存储(Local)
 
 ### 百度智能云(BaiDu)
 使用百度智能云时，需先下载SDK，将下载到的文件“BaiduBce.phar”放在文件夹extend中。
 [SDK下载地址](https://cloud.baidu.com/doc/Developer/index.html?sdk=php)
+
+## TODO
+- 上传图片处理独立出来。

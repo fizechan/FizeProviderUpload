@@ -57,6 +57,7 @@ abstract class UploadAbstract
      * @param string      $file      文件名
      * @param string|null $extension 后缀名
      * @return array [新宽度，新高度]
+     * @todo 图片处理将在后续版本中进行独立。
      */
     protected function imageResize(string $file, ?string $extension): array
     {

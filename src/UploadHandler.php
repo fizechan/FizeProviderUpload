@@ -103,7 +103,7 @@ interface UploadHandler
     public function uploadLargeComplete(string $file_key, string $fname = null, string $mimeType = null): array;
 
     /**
-     * 终止上传
+     * 分块上传：终止上传
      * @param string $file_key 文件路径标识
      */
     public function uploadLargeAbort(string $file_key);
