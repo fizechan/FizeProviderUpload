@@ -8,7 +8,7 @@ use BaiduBce\Services\Bos\BosOptions;
 use DateTime;
 use Fize\Exception\FileException;
 use Fize\IO\File;
-use Fize\IO\Mime;
+use Fize\IO\MIME;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
 
@@ -168,7 +168,7 @@ class BaiDu extends UploadAbstract implements UploadHandler
         }
 
         $mime = strtolower($matches[2]);
-        $extension = (new Mime($mime))->getExtension();
+        $extension = MIME::getExtensionByMime($mime);
         if (empty($extension)) {
             throw new FileException('无法识别上传的文件后缀名');
         }
@@ -271,7 +271,7 @@ class BaiDu extends UploadAbstract implements UploadHandler
         $options = [];
         $extension = pathinfo($file_key, PATHINFO_EXTENSION);
         if ($extension) {
-            $file_mime = Mime::getByExtension($extension);
+            $file_mime = MIME::getMimeByExtension($extension);
             if ($file_mime) {
                 $options[BosOptions::CONTENT_TYPE] = $file_mime;
             }
@@ -461,7 +461,6 @@ class BaiDu extends UploadAbstract implements UploadHandler
             'extension' => $extension,
             'file_size' => $stat['Content-Length'],
             'mime_type' => $stat['Content-Type'],
-            'storage'   => 'AliYun',
             'sha1'      => $stat['ETag'],
             'extend'    => $stat
         ];
@@ -611,7 +610,6 @@ class BaiDu extends UploadAbstract implements UploadHandler
             'image_height'  => $imageheight,
             'file_size'     => $saveFile->getSize(),
             'mime_type'     => $saveFile->getMime(),
-            'storage'       => 'ALiYun',
             'sha1'          => hash_file('sha1', $save_file),
             'extend'        => []
         ];

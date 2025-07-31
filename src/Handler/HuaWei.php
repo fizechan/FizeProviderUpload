@@ -138,7 +138,6 @@ class HuaWei extends UploadAbstract implements UploadHandler
             'image_height'  => $imageheight,
             'file_size'     => $file->getInfo('size'),
             'mime_type'     => $file->getMime(),
-            'storage'       => 'HuaWei',
             'sha1'          => hash_file('sha1', $file_path),
             'extend'        => $resp  // 额外信息
         ];
@@ -202,7 +201,6 @@ class HuaWei extends UploadAbstract implements UploadHandler
             'image_height' => $imageheight,
             'file_size'    => $size,
             'mime_type'    => $mime,
-            'storage'      => 'HuaWei',
             'sha1'         => hash_file('sha1', $save_file),
             'extend'       => $resp  // 额外信息
         ];
@@ -440,7 +438,6 @@ class HuaWei extends UploadAbstract implements UploadHandler
             'extension' => $extension,
             'file_size' => $stat['fsize'],
             'mime_type' => $stat['mimeType'],
-            'storage'   => 'HuaWei',
             'sha1'      => $stat['hash'],
             'extend'    => $stat
         ];
@@ -511,7 +508,6 @@ class HuaWei extends UploadAbstract implements UploadHandler
             'extension' => $extension,
             'file_size' => $stat['fsize'],
             'mime_type' => $stat['mimeType'],
-            'storage'   => 'HuaWei',
             'sha1'      => $stat['hash'],
             'extend'    => $stat
         ];
@@ -608,7 +604,6 @@ class HuaWei extends UploadAbstract implements UploadHandler
             'image_height'  => $imageheight,
             'file_size'     => $saveFile->getSize(),
             'mime_type'     => $saveFile->getMime(),
-            'storage'       => 'HuaWei',
             'sha1'          => hash_file('sha1', $save_file),
             'extend'        => $resp  // 额外信息
         ];

@@ -120,7 +120,6 @@ class QiNiu extends UploadAbstract implements UploadHandler
             'image_height'  => $imageheight,
             'file_size'     => $file->getInfo('size'),
             'mime_type'     => $file->getMime(),
-            'storage'       => 'QiNiu',
             'sha1'          => hash_file('sha1', $file_path),
             'extend'        => $ret  // 额外信息
         ];
@@ -184,7 +183,6 @@ class QiNiu extends UploadAbstract implements UploadHandler
             'image_height' => $imageheight,
             'file_size'    => $size,
             'mime_type'    => $mime,
-            'storage'      => 'QiNiu',
             'sha1'         => hash_file('sha1', $save_file),
             'extend'       => $ret  // 额外信息
         ];
@@ -392,7 +390,6 @@ class QiNiu extends UploadAbstract implements UploadHandler
             'extension' => $extension,
             'file_size' => $stat['fsize'],
             'mime_type' => $stat['mimeType'],
-            'storage'   => 'QiNiu',
             'sha1'      => $stat['hash'],
             'extend'    => $stat
         ];
@@ -455,7 +452,6 @@ class QiNiu extends UploadAbstract implements UploadHandler
             'extension' => $extension,
             'file_size' => $stat['fsize'],
             'mime_type' => $stat['mimeType'],
-            'storage'   => 'QiNiu',
             'sha1'      => $stat['hash'],
             'extend'    => $stat
         ];
@@ -546,7 +542,6 @@ class QiNiu extends UploadAbstract implements UploadHandler
             'image_height'  => $imageheight,
             'file_size'     => $saveFile->getSize(),
             'mime_type'     => $saveFile->getMime(),
-            'storage'       => 'QiNiu',
             'sha1'          => hash_file('sha1', $save_file),
             'extend'        => $ret  // 额外信息
         ];

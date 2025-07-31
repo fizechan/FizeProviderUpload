@@ -132,7 +132,6 @@ class PingAn extends UploadAbstract implements UploadHandler
             'imageframes' => 0,
             'filesize' => self::$saveFile->getSize(),
             'mimetype' => Upload::getMimeType(self::$saveFile->getPathname()),
-            'storage' => 'PingAn',
             'sha1' => hash_file('sha1', $save_file)
         ];
         unlink($save_file);
@@ -206,7 +205,6 @@ class PingAn extends UploadAbstract implements UploadHandler
             'imageframes' => 0,
             'filesize' => filesize($save_file),
             'mimetype' => Upload::getMimeType($save_file),
-            'storage' => 'PingAn',
             'sha1' => hash_file('sha1', $save_file)
         ];
         unlink($save_file);
@@ -283,7 +281,6 @@ class PingAn extends UploadAbstract implements UploadHandler
             'imageframes' => 0,
             'filesize' => $file->getInfo('size'),
             'mimetype' => Upload::getMimeType($save_file),
-            'storage' => 'PingAn',
             'sha1' => hash_file('sha1', $save_file)
         ];
         unlink($save_file);
@@ -443,7 +440,6 @@ class PingAn extends UploadAbstract implements UploadHandler
             'imageframes' => 0,
             'filesize' => filesize($save_file),
             'mimetype' => Upload::getMimeType($save_file),
-            'storage' => 'PingAn',
             'sha1' => hash_file('sha1', $save_file)
         ];
         unlink($save_file);

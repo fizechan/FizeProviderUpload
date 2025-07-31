@@ -4,7 +4,7 @@ namespace Fize\Provider\Upload\Handler;
 
 use Fize\Exception\FileException;
 use Fize\IO\File;
-use Fize\IO\Mime;
+use Fize\IO\MIME;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
 use OSS\OssClient;
@@ -121,7 +121,6 @@ class ALiYun extends UploadAbstract implements UploadHandler
             'image_height'  => $imageheight,
             'file_size'     => $file->getSize(),
             'mime_type'     => $file->getMime(),
-            'storage'       => 'ALiYun',
             'sha1'          => hash_file('sha1', $file_path),
             'extend'        => []
         ];
@@ -145,7 +144,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
         }
 
         $mime = strtolower($matches[2]);
-        $extension = (new Mime($mime))->getExtension();
+        $extension = MIME::getExtensionByMime($mime);
         if (empty($extension)) {
             throw new FileException('无法识别上传的文件后缀名');
         }
@@ -181,7 +180,6 @@ class ALiYun extends UploadAbstract implements UploadHandler
             'image_height' => $imageheight,
             'file_size'    => $size,
             'mime_type'    => $mime,
-            'storage'      => 'ALiYun',
             'sha1'         => hash_file('sha1', $save_file),
             'extend'       => []
         ];
@@ -416,7 +414,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
 
         // 没指定后缀名的情况下进行后缀名猜测并重命名该文件
         if (empty($extension)) {
-            $extension = (new Mime($stat['content-type']))->getExtension();
+            $extension = MIME::getExtensionByMime($stat['content-type']);
             if ($extension) {
                 $old_file_key = $file_key;
                 $file_key = $file_key . '.' . $extension;
@@ -435,7 +433,6 @@ class ALiYun extends UploadAbstract implements UploadHandler
             'extension' => $extension,
             'file_size' => $stat['content-length'],
             'mime_type' => $stat['content-type'],
-            'storage'   => 'AliYun',
             'sha1'      => $stat['etag'],
             'extend'    => $stat
         ];
@@ -492,7 +489,6 @@ class ALiYun extends UploadAbstract implements UploadHandler
             'image_height' => $imageheight,
             'file_size'    => $tempFile->getSize(),
             'mime_type'    => $tempFile->getMime(),
-            'storage'      => 'ALiYun',
             'sha1'         => hash_file('sha1', $temp_file),
             'extend'       => []
         ];
@@ -537,7 +533,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
         if (empty($extension)) {
             $fso = new File($uploadFile->getRealPath());
             $mime = $fso->getMime();
-            $extension = (new Mime($mime))->getExtension();
+            $extension = MIME::getExtensionByMime($mime);
             if (empty($extension)) {
                 throw new FileException('禁止上传无后缀名的文件');
             }
@@ -576,7 +572,6 @@ class ALiYun extends UploadAbstract implements UploadHandler
             'image_height'  => $imageheight,
             'file_size'     => $saveFile->getSize(),
             'mime_type'     => $saveFile->getMime(),
-            'storage'       => 'ALiYun',
             'sha1'          => hash_file('sha1', $save_file),
             'extend'        => []
         ];
