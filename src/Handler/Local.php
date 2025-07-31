@@ -3,7 +3,6 @@
 namespace Fize\Provider\Upload\Handler;
 
 use Fize\Exception\FileException;
-use Fize\Http\ServerRequestFactory;
 use Fize\Http\UploadedFile;
 use Fize\IO\File;
 use Fize\IO\MIME;
@@ -27,7 +26,6 @@ class Local extends UploadAbstract implements UploadHandler
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null)
     {
         $defaultCfg = [
-            'extensions'                          => 'jpg,png,gif,jpeg,bmp,txt,webp,xlsx',  // 可上传的文件后缀名，"*"表示支持所有文件。@todo 将作为方法以允许进行设置。
             'maxsize'                             => '10mb',                                // 最大可上传大小
             'multiple'                            => false,                                 // 是否支持批量上传
             'domain'                              => null,                                  //上传时指定文件URL主机域名。为null表示直接获取当前domain
@@ -61,10 +59,7 @@ class Local extends UploadAbstract implements UploadHandler
      */
     public function upload(string $name, string $type = null, string $file_key = null): array
     {
-        $srf = new ServerRequestFactory();
-        $request = $srf->createServerRequestFromGlobals();
-        $uploadFiles = $request->getUploadedFiles();
-        $uploadFile = $uploadFiles[$name];
+        $uploadFile = $this->getUploadedFile($name);
         return $this->handleUpload($uploadFile, $type, $file_key);
     }
 
@@ -78,12 +73,9 @@ class Local extends UploadAbstract implements UploadHandler
      * @param array|null  $file_keys 文件路径标识
      * @return array 返回每个保存文件的相关信息组成的数组
      */
-    public function uploads(?string $name = null, ?string $type = null, ?array $file_keys = null): array
+    public function uploads(string $name, ?string $type = null, ?array $file_keys = null): array
     {
-        $srf = new ServerRequestFactory();
-        $request = $srf->createServerRequestFromGlobals();
-        $uploadFiles = $request->getUploadedFiles();
-        $uploadFiles = $uploadFiles[$name];  // 是数组
+        $uploadFiles = $this->getUploadedFiles($name);
         $infos = [];
         foreach ($uploadFiles as $index => $file) {
             $file_key = $file_keys[$index] ?? null;
@@ -131,15 +123,21 @@ class Local extends UploadAbstract implements UploadHandler
         [$imagewidth, $imageheight] = $this->getImageSize($save_file, $extension);  // 文件直传故不进行图片压缩
 
         $data = [
-            'url'          => $url,
-            'path'         => $path,
-            'extension'    => $extension,
+            'key'           => $file_key,
+            'path'          => $path,       // WEB路径
+            'full_path'     => $full_path,  // 本机路径
+            'url'           => $url,
+            'size'          => filesize($save_file),
+            'mime'          => $mime,
+            'extension'     => $extension,
+            'sha1'          => hash_file('sha1', $save_file),
+            'original_name' => basename($file_path),
+
             'image_width'  => $imagewidth,
             'image_height' => $imageheight,
-            'file_size'    => filesize($save_file),
-            'mime_type'    => $mime,
-            'sha1'         => hash_file('sha1', $save_file),
-            'extend'       => [
+
+
+            'extend' => [
                 'original_name' => basename($file_path),
                 'original_path' => realpath($file_path),
                 'full_path'     => $full_path,
@@ -173,7 +171,7 @@ class Local extends UploadAbstract implements UploadHandler
         [$file_key, , , $save_file] = $this->getPathInfo($file_key, $type, $extension);
         $fso = new File($save_file, 'w');
         $result = $fso->fwrite(base64_decode(str_replace($matches[1], '', $base64_centent)));
-        if ($result === false) {
+        if (!$result) {
             throw new FileException('上传失败');
         }
         unset($fso);
@@ -230,7 +228,7 @@ class Local extends UploadAbstract implements UploadHandler
 
         $fso = new File($save_file, 'w');
         $result = $fso->fwrite($content);
-        if ($result === false) {
+        if (!$result) {
             throw new FileException('上传失败');
         }
         $mime = $fso->getMime();
@@ -277,7 +275,7 @@ class Local extends UploadAbstract implements UploadHandler
             $save_name = uniqid();
             $file_key = $sdir . '/' . $save_name;
         } else {  // 指定$file_key时如果有已存在的上传临时文件则删除作废以重新上传。
-            $save_part_file = Config::get('filesystem.disks.public.root') . '/' . $this->cfg['dir'] . '/' . $file_key . '.tmp';
+            $save_part_file = $this->cfg['dir'] . '/' . $file_key . '.tmp';
             if (is_file($save_part_file)) {
                 unlink($save_part_file);
             }
@@ -294,17 +292,17 @@ class Local extends UploadAbstract implements UploadHandler
     {
         [, $dir, $save_name] = $this->getPathInfo($file_key);
         $save_part_name = $save_name . '.tmp';
-        $save_file = Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_part_name;
+        $save_file = $this->cfg['dir'] . '/' . $dir . '/' . $save_part_name;
         $fso = new File($save_file, 'a');
         $result = $fso->fwrite($content);
-        if ($result === false) {
+        if (!$result) {
             throw new FileException('上传失败');
         }
         unset($fso);
     }
 
     /**
-     * 分块上传：结束并生成文件
+     * 分块上传：完成上传
      * @param string      $file_key 文件路径标识
      * @param string|null $fname    原文件名
      * @param string|null $mimeType 指定Mime
@@ -314,7 +312,7 @@ class Local extends UploadAbstract implements UploadHandler
     {
         [, $dir, $save_name, $save_file] = $this->getPathInfo($file_key);
         $save_part_name = $save_name . '.tmp';
-        $fso = new File(Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_part_name);
+        $fso = new File($this->cfg['dir'] . '/' . $dir . '/' . $save_part_name);
         $fso->rename($save_file);
         unset($fso);
         $extension = pathinfo($save_file, PATHINFO_EXTENSION);
@@ -334,14 +332,14 @@ class Local extends UploadAbstract implements UploadHandler
     }
 
     /**
-     * 终止上传
+     * 分块上传：终止上传
      * @param string $file_key 文件路径标识
      */
     public function uploadLargeAbort(string $file_key)
     {
         [, $dir, $save_name] = $this->getPathInfo($file_key);
         $save_part_name = $save_name . '.tmp';
-        $save_part_file = Config::get('filesystem.disks.public.root') . '/' . $dir . '/' . $save_part_name;
+        $save_part_file = $this->cfg['dir'] . '/' . $dir . '/' . $save_part_name;
         unlink($save_part_file);
     }
 
@@ -364,7 +362,7 @@ class Local extends UploadAbstract implements UploadHandler
         if (empty($name)) {
             throw new FileException('请指定要上传的文件。');
         }
-        $uploadFile = Request::file($name);
+        $uploadFile = $this->getUploadedFile($name);
         if (empty($uploadFile)) {
             throw new FileException('没有找到要上传的文件。');
         }
@@ -375,13 +373,13 @@ class Local extends UploadAbstract implements UploadHandler
 
         [$file_key, $dir, $save_name, $save_file] = $this->getPathInfo($file_key, $type, $extension);
 
-        if ($blob_index == 0) {
+        if ($blob_index == 0) {  // @todo 由于上传无序不能用$blob_index来确定是否已初始化，应使用临时记录文件判断，如果记录文件不存在则表示未初始化。
             $this->uploadLargeInit($file_key, $type);
         }
 
         // 中间
         // file_key参数在上传过程中必须保持一致
-        $this->uploadLargePart($file_key, file_get_contents($uploadFile->getPathname()));
+        $this->uploadLargePart($file_key, $uploadFile->getStream()->getContents());
         if ($blob_index < $blob_count - 1) {
             return ['name' => $name, 'blob_index' => $blob_index, 'blob_count' => $blob_count, 'file_key' => $file_key, 'type' => $type];
         }
@@ -538,18 +536,19 @@ class Local extends UploadAbstract implements UploadHandler
         $domain = $this->cfg['domain'] ?: Request::domain();
         $url = $domain . '/' . $full_path;
         $data = [
-            'key'       => $file_key,
-            'path'      => $path,       // WEB路径
-            'full_path' => $full_path,  // 本机路径
-            'url'       => $url,
-            'size'      => $size,
-            'mime'      => $mime,
-            'extension' => $extension,
-            'sha1'      => hash_file('sha1', $targetPath),
+            'key'           => $file_key,
+            'name'          => $save_name,
+            'path'          => $path,       // WEB路径
+            'full_path'     => $full_path,  // 本机路径
+            'url'           => $url,
+            'size'          => $size,
+            'mime'          => $mime,
+            'extension'     => $extension,
+            'sha1'          => hash_file('sha1', $targetPath),
             'original_name' => $originalName,
 
-            'image_width'   => $imagewidth,
-            'image_height'  => $imageheight,
+            'image_width'  => $imagewidth,
+            'image_height' => $imageheight,
         ];
         return $data;
     }

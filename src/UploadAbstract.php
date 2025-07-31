@@ -4,6 +4,9 @@ namespace Fize\Provider\Upload;
 
 use Exception;
 use Fize\Codec\Json;
+use Fize\Exception\FileException;
+use Fize\Http\ServerRequestFactory;
+use Fize\Http\UploadedFile;
 use Fize\Image\Image;
 use Fize\IO\Extension;
 use Fize\IO\File;
@@ -33,6 +36,20 @@ abstract class UploadAbstract
      * @var string 记录上传临时信息所用的文件名前缀
      */
     protected $tempPre = '';
+
+    /**
+     * @var string 允许上传的文件后缀名
+     */
+    protected $allowExtensions = "*";
+
+    /**
+     * 设置允许上传的文件后缀名
+     * @param string $extensions 后缀名，多个以逗号隔开。
+     */
+    public function allowExtensions(string $extensions)
+    {
+        $this->allowExtensions = $extensions;
+    }
 
     /**
      * 获取保存的文件夹路径部分
@@ -165,10 +182,40 @@ abstract class UploadAbstract
     protected function initProviderCfg(array $providerCfg)
     {
         $def_config = [
-            'image_resize'    => true,  // 图片大小调整
-            'image_max_width' => 1000,   // 图片宽度超过该值时进行调整
+            'image_resize'    => true,             // 图片大小调整
+            'image_max_width' => 1000,             // 图片宽度超过该值时进行调整
             'image_max_size'  => 2 * 1024 * 1024,  // 图片文件大小超过该值时进行调整
         ];
         $this->providerCfg = array_merge($def_config, $providerCfg);
+    }
+
+    /**
+     * 获取上传的文件数组
+     * @param string|null $name 文件域表单名
+     * @return array
+     */
+    protected function getUploadedFiles(?string $name = null): array
+    {
+        $srf = new ServerRequestFactory();
+        $request = $srf->createServerRequestFromGlobals();
+        $uploadFiles = $request->getUploadedFiles();
+        if ($name) {
+            $uploadFiles = $uploadFiles[$name] ?? [];
+        }
+        return $uploadFiles;
+    }
+
+    /**
+     * 获取上传的文件
+     * @param string $name 键名
+     * @return UploadedFile
+     */
+    protected function getUploadedFile(string $name): UploadedFile
+    {
+        $uploadFiles = $this->getUploadedFiles();
+        if (!isset($uploadFiles[$name])) {
+            throw new FileException("找不到文件：{$name}");
+        }
+        return $uploadFiles[$name];
     }
 }

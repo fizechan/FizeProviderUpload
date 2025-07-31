@@ -3,6 +3,7 @@
 namespace Fize\Provider\Upload\Handler;
 
 use Fize\Exception\FileException;
+use Fize\Http\UploadedFile;
 use Fize\IO\File;
 use Fize\IO\MIME;
 use Fize\Provider\Upload\UploadAbstract;
@@ -56,7 +57,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
      */
     public function upload(string $name, string $type = null, string $file_key = null): array
     {
-        $uploadFile = Request::file($name);
+        $uploadFile = $this->getUploadedFile($name);
         return $this->handleUpload($uploadFile, $type, $file_key);
     }
 
@@ -72,9 +73,9 @@ class ALiYun extends UploadAbstract implements UploadHandler
      */
     public function uploads(string $name, string $type = null, array $file_keys = null): array
     {
-        $files = Request::file($name);
+        $uploadFiles = $this->getUploadedFiles($name);
         $infos = [];
-        foreach ($files as $index => $file) {
+        foreach ($uploadFiles as $index => $file) {
             $file_key = $file_keys[$index] ?? null;
             $infos[] = $this->handleUpload($file, $type, $file_key);
         }
@@ -376,7 +377,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
         if (empty($name)) {
             throw new FileException('请指定要上传的文件。');
         }
-        $uploadFile = Request::file($name);
+        $uploadFile = $this->getUploadedFile($name);
         if (empty($uploadFile)) {
             throw new FileException('没有找到要上传的文件。');
         }
@@ -401,7 +402,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
 
         // 中间
         // file_key参数在上传过程中必须保持一致
-        $this->uploadLargePart($file_key, file_get_contents($uploadFile->getPathname()));
+        $this->uploadLargePart($file_key, $uploadFile->getStream()->getContents());
         if ($blob_index < $blob_count - 1) {
             return ['name' => $name, 'blob_index' => $blob_index, 'blob_count' => $blob_count, 'file_key' => $file_key, 'type' => $type];
         }

@@ -17,6 +17,12 @@ interface UploadHandler
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null);
 
     /**
+     * 设置允许上传的文件后缀名
+     * @param string $extensions 后缀名，多个以逗号隔开。
+     */
+    public function allowExtensions(string $extensions);
+
+    /**
      * 单文件上传
      *
      * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
@@ -33,12 +39,12 @@ interface UploadHandler
      *
      * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
      * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string|null $name      文件域表单名
+     * @param string      $name      文件域表单名
      * @param string|null $type      指定类型
      * @param array|null  $file_keys 文件路径标识
      * @return array 返回每个保存文件的相关信息组成的数组
      */
-    public function uploads(?string $name = null, ?string $type = null, ?array $file_keys = null): array;
+    public function uploads(string $name, ?string $type = null, ?array $file_keys = null): array;
 
     /**
      * 上传本地文件
@@ -94,7 +100,7 @@ interface UploadHandler
     public function uploadLargePart(string $file_key, string $content);
 
     /**
-     * 分块上传：结束并生成文件
+     * 分块上传：完成上传
      * @param string      $file_key 文件路径标识
      * @param string|null $fname    原文件名
      * @param string|null $mimeType 指定Mime

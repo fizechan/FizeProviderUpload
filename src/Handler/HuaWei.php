@@ -665,17 +665,4 @@ class HuaWei extends UploadAbstract implements UploadHandler
         $infoFile = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
         unlink($infoFile);
     }
-
-    /**
-     * 验证值是否存在
-     * @param array  $array 待验证值
-     * @param string $key   键名
-     * @throws Exception
-     */
-    protected function assertHasKey(array $array, string $key)
-    {
-        if (!isset($array[$key])) {
-            throw new Exception("缺少必要参数：$key");
-        }
-    }
 }
