@@ -10,7 +10,7 @@ use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
 
 /**
- * 平安OBS
+ * 平安云OBS
  */
 class PingAn extends UploadAbstract implements UploadHandler
 {

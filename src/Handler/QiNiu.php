@@ -16,7 +16,7 @@ use Qiniu\Storage\UploadManager;
 
 
 /**
- * 七牛方式上传文件
+ * 七牛云OBS
  */
 class QiNiu extends UploadAbstract implements UploadHandler
 {
