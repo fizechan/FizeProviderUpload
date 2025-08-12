@@ -13,14 +13,21 @@ interface UploadHandler
      * @param array       $cfg         配置
      * @param array       $providerCfg provider设置
      * @param string|null $tempDir     临时文件存放文件夹目录
+     * @todo 待移除，每个处理器初始化方法不一定一样。
      */
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null);
 
     /**
      * 设置允许上传的文件后缀名
-     * @param string $extensions 后缀名，多个以逗号隔开。
+     * @param string $extensions 后缀名，多个以逗号隔开。*表示不做限制。
      */
-    public function allowExtensions(string $extensions);
+    public function setAllowExtensions(string $extensions);
+
+    /**
+     * 设置允许上传的文件大小
+     * @param int $maxSize 文件大小
+     */
+    public function setMaxSize(int $maxSize);
 
     /**
      * 单文件上传

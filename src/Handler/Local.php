@@ -26,7 +26,6 @@ class Local extends UploadAbstract implements UploadHandler
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null)
     {
         $defaultCfg = [
-            'maxsize'                             => '10mb',                                // 最大可上传大小
             'multiple'                            => false,                                 // 是否支持批量上传
             'domain'                              => null,                                  //上传时指定文件URL主机域名。为null表示直接获取当前domain
             'saveDir'                             => 'uploads',                             //上传路径
@@ -510,9 +509,7 @@ class Local extends UploadAbstract implements UploadHandler
         if (empty($extension)) {
             throw new FileException('禁止上传无后缀名的文件');
         }
-        if (!in_array($extension, explode(',', $this->cfg['extensions']))) {
-            throw new FileException("禁止上传后缀名为{$extension}的文件");
-        }
+        $this->checkExtension($extension);
 
         $size = $uploadFile->getSize();
 
@@ -536,17 +533,18 @@ class Local extends UploadAbstract implements UploadHandler
         $domain = $this->cfg['domain'] ?: Request::domain();
         $url = $domain . '/' . $full_path;
         $data = [
-            'key'           => $file_key,
             'name'          => $save_name,
             'path'          => $path,       // WEB路径
-            'full_path'     => $full_path,  // 本机路径
             'url'           => $url,
             'size'          => $size,
             'mime'          => $mime,
             'extension'     => $extension,
             'sha1'          => hash_file('sha1', $targetPath),
             'original_name' => $originalName,
+            'tmp_name'      => $uploadFile->getTmpName(),
+            'full_path'     => $full_path,  // 本机路径
 
+            'key'          => $file_key,
             'image_width'  => $imagewidth,
             'image_height' => $imageheight,
         ];

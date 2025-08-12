@@ -2,6 +2,9 @@
 
 namespace Tests\Handler;
 
+use Fize\Http\ServerRequest;
+use Fize\Http\ServerRequestFactory;
+use Fize\Http\UploadedFile;
 use Fize\Provider\Upload\Handler\Local;
 use PHPUnit\Framework\TestCase;
 
@@ -15,7 +18,16 @@ class TestLocal extends TestCase
 
     public function testUpload()
     {
-        // 需要在HTTP环境下测试
+        $srf = new ServerRequestFactory();
+        $request = new ServerRequest('POST', '//upload');
+        $upfile1 = new UploadedFile(__FILE__, filesize(__FILE__), UPLOAD_ERR_OK);
+        $upfile1->forTest();
+        $request = $request->withUploadedFiles(['file1' => $upfile1]);
+        $srf->setGlobals($request);
+        $uploader = new Local();
+        $result = $uploader->upload('file1');
+        var_dump($result);
+        self::assertIsArray($result);
     }
 
     public function testUploads()

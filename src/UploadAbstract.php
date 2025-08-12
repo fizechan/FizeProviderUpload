@@ -43,12 +43,26 @@ abstract class UploadAbstract
     protected $allowExtensions = "*";
 
     /**
+     * @var int 允许上传的文件大小
+     */
+    protected $maxSize = 0;
+
+    /**
      * 设置允许上传的文件后缀名
      * @param string $extensions 后缀名，多个以逗号隔开。
      */
-    public function allowExtensions(string $extensions)
+    public function setAllowExtensions(string $extensions)
     {
         $this->allowExtensions = $extensions;
+    }
+
+    /**
+     * 设置允许上传的文件大小
+     * @param int $maxSize 文件大小
+     */
+    public function setMaxSize(int $maxSize)
+    {
+        $this->maxSize = $maxSize;
     }
 
     /**
@@ -178,6 +192,7 @@ abstract class UploadAbstract
     /**
      * 初始化provider设置
      * @param array $providerCfg provider设置
+     * @todo 待移除，图片处理将在后续版本中进行独立。
      */
     protected function initProviderCfg(array $providerCfg)
     {
@@ -217,5 +232,21 @@ abstract class UploadAbstract
             throw new FileException("找不到文件：{$name}");
         }
         return $uploadFiles[$name];
+    }
+
+    /**
+     * 检查文件后缀名
+     * @param string $extension 后缀名
+     * @return void
+     */
+    protected function checkExtension(string $extension)
+    {
+        if ($this->allowExtensions == '*') {
+            return;
+        }
+        $allowExtensions = explode(',', $this->allowExtensions);
+        if (!in_array($extension, $allowExtensions)) {
+            throw new FileException("禁止上传后缀名为{$extension}的文件");
+        }
     }
 }

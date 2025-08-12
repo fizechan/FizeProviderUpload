@@ -17,9 +17,9 @@
     "php": ">=7.1.0",
     "ext-json": "*",
     "fize/exception": "*",
-    "fize/http": "^5.1.2",
+    "fize/http": "^5.2.0",
     "fize/image": "*",
-    "fize/io": "^9.1.0",
+    "fize/io": "^9.1.1",
     "fize/web": "*"
   },
   "suggest": {
