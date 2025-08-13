@@ -26,14 +26,21 @@ class Local extends UploadAbstract implements UploadHandler
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null)
     {
         $defaultCfg = [
-            'multiple'                            => false,                                 // 是否支持批量上传
             'domain'                              => null,                                  //上传时指定文件URL主机域名。为null表示直接获取当前domain
-            'saveDir'                             => 'uploads',                             //上传路径
-            'tempDir'                             => 'temp',                                // 临时文件路径
+            'rootPath'                            => '.',                                  // 根目录
+            'saveDir'                             => '/uploads',                             //上传路径
+            'tempDir'                             => '/temp',                                // 临时文件路径
+
+            'multiple'                            => false,                                 // 是否支持批量上传
             "max_upload_amount_per_minute_logged" => 60,                                    // @todo 属于业务逻辑，考虑外移。
             "max_upload_amount_per_hour_unlogged" => 1800,                                  // @todo 属于业务逻辑，考虑外移。
         ];
         $this->cfg = array_merge($defaultCfg, $cfg);
+
+        if (!$this->cfg['domain']) {
+            $this->cfg['domain'] = Request::domain();
+        }
+
         $defaultProviderCfg = [
             'image_max_size'  => 102400,                                // 最大图片文件大小，超过该大小才进行缩略
             'image_max_width' => 1000,                                  // 最大图片宽度，超过该宽度将进行缩放至宽度2048
@@ -516,22 +523,20 @@ class Local extends UploadAbstract implements UploadHandler
 
         if (is_null($file_key)) {
             $sdir = $this->getSaveDir($type);
-            $dir = $this->cfg['dir'] . '/' . $sdir;
+            $dir = $this->cfg['saveDir'] . '/' . $sdir;
             $save_name = uniqid() . '.' . $extension;
             $file_key = $sdir . '/' . $save_name;
         } else {
             $dir = dirname($file_key);
             $save_name = basename($file_key);
         }
-        $targetPath = $dir . '/' . $save_name;
+        $targetPath = $this->cfg['rootPath'] . '/' . $dir . '/' . $save_name;
         $uploadFile->moveTo($targetPath);
 
         [$imagewidth, $imageheight] = $this->imageResize($targetPath, $extension);
 
-        $path = $file_key;
-        $full_path = $this->cfg['dir'] . '/' . $path;
-        $domain = $this->cfg['domain'] ?: Request::domain();
-        $url = $domain . '/' . $full_path;
+        $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
+        $url = $this->cfg['domain'] . '/' . $path;
         $data = [
             'name'          => $save_name,
             'path'          => $path,       // WEB路径
@@ -540,9 +545,10 @@ class Local extends UploadAbstract implements UploadHandler
             'mime'          => $mime,
             'extension'     => $extension,
             'sha1'          => hash_file('sha1', $targetPath),
+
             'original_name' => $originalName,
             'tmp_name'      => $uploadFile->getTmpName(),
-            'full_path'     => $full_path,  // 本机路径
+            'full_path'     => $targetPath,  // 本机路径
 
             'key'          => $file_key,
             'image_width'  => $imagewidth,
