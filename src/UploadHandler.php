@@ -38,6 +38,7 @@ interface UploadHandler
      * @param string|null $type     指定类型
      * @param string|null $file_key 文件路径标识
      * @return array 返回保存文件的相关信息
+     * @todo 考虑移除$type参数，新增$replace参数
      */
     public function upload(string $name, ?string $type = null, ?string $file_key = null): array;
 
@@ -50,6 +51,7 @@ interface UploadHandler
      * @param string|null $type      指定类型
      * @param array|null  $file_keys 文件路径标识
      * @return array 返回每个保存文件的相关信息组成的数组
+     * @todo 考虑移除$type参数，新增$replace参数
      */
     public function uploads(string $name, ?string $type = null, ?array $file_keys = null): array;
 
@@ -62,6 +64,7 @@ interface UploadHandler
      * @param string|null $type      指定类型
      * @param string|null $file_key  文件路径标识
      * @return array 返回保存文件的相关信息
+     * @todo 考虑移除$type参数，新增$replace参数
      */
     public function uploadFile(string $file_path, ?string $type = null, ?string $file_key = null): array;
 
@@ -74,6 +77,7 @@ interface UploadHandler
      * @param string|null $type           指定类型
      * @param string|null $file_key       文件路径标识
      * @return array 返回保存文件的相关信息
+     * @todo 考虑移除$type参数，新增$replace参数
      */
     public function uploadBase64(string $base64_centent, ?string $type = null, ?string $file_key = null): array;
 
@@ -88,6 +92,7 @@ interface UploadHandler
      * @param string|null $type      指定类型
      * @param string|null $file_key  文件路径标识
      * @return array 返回保存文件的相关信息
+     * @todo 考虑移除$type参数，新增$replace参数
      */
     public function uploadRemote(string $url, ?string $extension = null, ?string $type = null, ?string $file_key = null): array;
 
@@ -96,6 +101,7 @@ interface UploadHandler
      * @param string|null $file_key 文件路径标识，不指定则自动生成
      * @param string|null $type     指定类型，指定 $file_key 后无效
      * @return string 返回文件路径标识
+     * @todo 考虑移除$type参数，新增$replace参数
      */
     public function uploadLargeInit(?string $file_key = null, ?string $type = null): string;
 
@@ -149,6 +155,7 @@ interface UploadHandler
      * @param string|null $type      指定类型
      * @param string|null $file_key  文件路径标识
      * @return array
+     * @todo 考虑移除$type参数，新增$replace参数
      */
     public function uploadParts(array $parts, ?string $extension = null, ?string $type = null, ?string $file_key = null): array;
 

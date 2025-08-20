@@ -18,13 +18,15 @@ class TestLocal extends TestCase
 
     public function testUpload()
     {
-        $srf = new ServerRequestFactory();
         $request = new ServerRequest('POST', '//www.baidu.com/upload');
         $upfile1 = new UploadedFile(__FILE__, filesize(__FILE__), UPLOAD_ERR_OK);
         $upfile1->forTest();
         $request = $request->withUploadedFiles(['file1' => $upfile1]);
         ServerRequestFactory::setGlobals($request);
-        $uploader = new Local();
+        $cfg = [
+            'rootPath' => dirname(__FILE__, 3) . '/temp',
+        ];
+        $uploader = new Local($cfg);
         $result = $uploader->upload('file1');
         var_dump($result);
         self::assertIsArray($result);
@@ -32,7 +34,32 @@ class TestLocal extends TestCase
 
     public function testUploads()
     {
-        // 需要在HTTP环境下测试
+        $request = new ServerRequest('POST', '//www.baidu.com/upload');
+        $upfile1 = new UploadedFile(__FILE__, filesize(__FILE__), UPLOAD_ERR_OK);
+        $upfile1->forTest();
+        $upfile2 = new UploadedFile(__FILE__, filesize(__FILE__), UPLOAD_ERR_OK);
+        $upfile2->forTest();
+        $request = $request->withUploadedFiles(['files1' => [$upfile1, $upfile2]]);
+        ServerRequestFactory::setGlobals($request);
+        $cfg = [
+            'rootPath' => dirname(__FILE__, 3) . '/temp',
+        ];
+        $uploader = new Local($cfg);
+        $result = $uploader->uploads('files1');
+        var_dump($result);
+        self::assertIsArray($result);
+    }
+
+    public function testUploadFile()
+    {
+        $cfg = [
+            'rootPath' => dirname(__FILE__, 3) . '/temp',
+            'domain' => 'https://www.baidu.com',
+        ];
+        $uploader = new Local($cfg);
+        $result = $uploader->uploadFile(__FILE__);
+        var_dump($result);
+        self::assertIsArray($result);
     }
 
     public function testUploadBase64()
@@ -40,14 +67,6 @@ class TestLocal extends TestCase
         $base64 = file_get_contents(dirname(__FILE__, 4) . '/temp/base64_jpg.txt');
         $uploader = new Local();
         $result = $uploader->uploadBase64($base64, 'image');
-        var_dump($result);
-        self::assertIsArray($result);
-    }
-
-    public function testUploadFile()
-    {
-        $uploader = new Local();
-        $result = $uploader->uploadFile(__FILE__);
         var_dump($result);
         self::assertIsArray($result);
     }
