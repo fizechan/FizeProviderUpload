@@ -64,8 +64,12 @@ class TestLocal extends TestCase
 
     public function testUploadBase64()
     {
-        $base64 = file_get_contents(dirname(__FILE__, 4) . '/temp/base64_jpg.txt');
-        $uploader = new Local();
+        $cfg = [
+            'rootPath' => dirname(__FILE__, 3) . '/temp',
+            'domain' => 'https://www.baidu.com',
+        ];
+        $uploader = new Local($cfg);
+        $base64 = file_get_contents(dirname(__FILE__, 3) . '/temp/base64_jpg.txt');
         $result = $uploader->uploadBase64($base64, 'image');
         var_dump($result);
         self::assertIsArray($result);

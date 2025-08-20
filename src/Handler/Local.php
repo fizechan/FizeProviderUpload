@@ -163,38 +163,35 @@ class Local extends UploadAbstract implements UploadHandler
         if (empty($extension)) {
             throw new FileException('无法识别上传的文件后缀名');
         }
+        $this->checkExtension($extension);
 
-        [$file_key, , , $save_file] = $this->getPathInfo($file_key, $type, $extension);
-        $fso = new File($save_file, 'w');
-        $result = $fso->fwrite(base64_decode(str_replace($matches[1], '', $base64_centent)));
-        if (!$result) {
+        [$file_key, $dir, $save_name, $targetPath] = $this->getPathInfo($file_key, $type, $extension);
+
+        $fso = new File($targetPath, 'w');
+        $file_content = base64_decode(str_replace($matches[1], '', $base64_centent));
+        $result = $fso->fwrite($file_content);
+        if (in_array($result, [0, false])) {
             throw new FileException('上传失败');
         }
+        $size = $fso->getSize();
         unset($fso);
 
-        [$imagewidth, $imageheight] = $this->imageResize($save_file, $extension);
-        $saveFile = new File($save_file);
-        $size = $saveFile->getSize();
-
-        $path = $file_key;
-        $full_path = $this->cfg['dir'] . '/' . $path;
-
-        $domain = $this->cfg['domain'];
-        $domain = $domain ?: Request::domain();
-        $url = $domain . '/' . $full_path;
+        $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
+        $url = $this->cfg['domain'] . $path;
 
         $data = [
-            'url'          => $url,
-            'path'         => $path,
-            'extension'    => $extension,
-            'image_width'  => $imagewidth,
-            'image_height' => $imageheight,
-            'file_size'    => $size,
-            'mime_type'    => $mime,
-            'sha1'         => hash_file('sha1', $save_file),
-            'extend'       => [
-                'full_path' => $full_path
-            ]  // 额外信息
+            'name'          => $save_name,
+            'path'          => $path,
+            'url'           => $url,
+            'size'          => $size,
+            'mime'          => $mime,
+            'extension'     => $extension,
+            'sha1'          => hash_file('sha1', $targetPath),
+
+            'dir'           => $dir,
+            'full_path'     => $targetPath,
+
+            'key'          => $file_key,
         ];
         return $data;
     }
@@ -215,14 +212,14 @@ class Local extends UploadAbstract implements UploadHandler
     {
         $original_url = $url;
         $extension = pathinfo($original_url, PATHINFO_EXTENSION);
-        [$file_key, $dir, $save_name, $save_file] = $this->getPathInfo($file_key, $type, $extension);
+        [$file_key, $dir, $save_name, $targetPath] = $this->getPathInfo($file_key, $type, $extension);
 
         $content = file_get_contents($url);
         if ($content === false) {
             throw new FileException('获取远程文件时发生错误');
         }
 
-        $fso = new File($save_file, 'w');
+        $fso = new File($targetPath, 'w');
         $result = $fso->fwrite($content);
         if (!$result) {
             throw new FileException('上传失败');
