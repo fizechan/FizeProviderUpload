@@ -55,67 +55,62 @@ class Local extends UploadAbstract implements UploadHandler
 
     /**
      * 单文件上传
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $name     文件域表单名
-     * @param string|null $type     指定类型
-     * @param string|null $file_key 文件路径标识
+     * @param string      $name    文件域表单名
+     * @param string|null $key     文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function upload(string $name, string $type = null, string $file_key = null): array
+    public function upload(string $name, ?string $key = null): array
     {
         $uploadFile = $this->getUploadedFile($name);
-        return $this->handleUpload($uploadFile, $type, $file_key);
+        return $this->handleUpload($uploadFile, $key);
     }
 
     /**
      * 多文件上传
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string|null $name      文件域表单名
-     * @param string|null $type      指定类型
-     * @param array|null  $file_keys 文件路径标识
+     * @param string     $name    文件域表单名
+     * @param array|null $keys    文件路径标识
      * @return array 返回每个保存文件的相关信息组成的数组
      */
-    public function uploads(string $name, ?string $type = null, ?array $file_keys = null): array
+    public function uploads(string $name, ?array $keys = null): array
     {
         $uploadFiles = $this->getUploadedFiles($name);
         $infos = [];
         foreach ($uploadFiles as $index => $file) {
-            $file_key = $file_keys[$index] ?? null;
-            $infos[] = $this->handleUpload($file, $type, $file_key);
+            $key = $keys[$index] ?? null;
+            $infos[] = $this->handleUpload($file, $key);
         }
         return $infos;
     }
 
     /**
      * 上传本地文件
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $file_path 服务器端文件路径
-     * @param string|null $type      指定类型
-     * @param string|null $file_key  文件路径标识
+     * @param string      $filePath 服务器端文件路径
+     * @param string|null $key      文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function uploadFile(string $file_path, string $type = null, string $file_key = null): array
+    public function uploadFile(string $filePath, ?string $key = null): array
     {
-        $origName = basename($file_path);
-        $origPath = realpath($file_path);
-        $orig_file = new File($file_path);
+        $origName = basename($filePath);
+        $origPath = realpath($filePath);
+        $orig_file = new File($filePath);
         $extension = strtolower($orig_file->getExtension());
         unset($orig_file);
         $this->checkExtension($extension);
 
-        [$file_key, $dir, $name, $targetPath] = $this->getPathInfo($file_key, $type, $extension);
-        $size = filesize($file_path);
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension);
+        $size = filesize($filePath);
 
+        if (is_file($targetPath)) {
+            if ($this->replace) {
+                unlink($targetPath);
+            } else {
+                throw new FileException($targetPath, '文件已存在！');
+            }
+        }
         $fso = new File($targetPath, 'w');
-        $result = $fso->fwrite(file_get_contents($file_path));
+        $result = $fso->fwrite(file_get_contents($filePath));
         if (in_array($result, [0, false])) {
-            throw new FileException('上传失败');
+            throw new FileException($targetPath, '上传失败');
         }
         $mime = $fso->getMime();
         unset($fso);
@@ -125,6 +120,7 @@ class Local extends UploadAbstract implements UploadHandler
         $url = $this->cfg['domain'] . $path;
 
         $data = [
+            'key'       => $key,
             'name'      => $name,
             'path'      => $path,
             'url'       => $url,
@@ -137,42 +133,43 @@ class Local extends UploadAbstract implements UploadHandler
             'full_path' => $targetPath,
             'orig_name' => $origName,
             'orig_path' => $origPath,  // 原文件路径
-
-            'key' => $file_key,
         ];
         return $data;
     }
 
     /**
      * 上传base64串生成文件并保存
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $base64_centent base64串
-     * @param string|null $type           指定类型
-     * @param string|null $file_key       文件路径标识
+     * @param string      $base64Centent base64串
+     * @param string|null $key           文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function uploadBase64(string $base64_centent, string $type = null, string $file_key = null): array
+    public function uploadBase64(string $base64Centent, ?string $key = null): array
     {
-        if (!preg_match('/^(data:\s*(\w+\/\w+);base64,)/', $base64_centent, $matches)) {
-            throw new FileException('没有找到要上传的文件');
+        if (!preg_match('/^(data:\s*(\w+\/\w+);base64,)/', $base64Centent, $matches)) {
+            throw new FileException('', '没有找到要上传的文件');
         }
 
         $mime = strtolower($matches[2]);
         $extension = MIME::getExtensionByMime($mime);
         if (empty($extension)) {
-            throw new FileException('无法识别上传的文件后缀名');
+            throw new FileException('', '无法识别上传的文件后缀名');
         }
         $this->checkExtension($extension);
 
-        [$file_key, $dir, $name, $targetPath] = $this->getPathInfo($file_key, $type, $extension);
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension);
 
+        if (is_file($targetPath)) {
+            if ($this->replace) {
+                unlink($targetPath);
+            } else {
+                throw new FileException($targetPath, '文件已存在！');
+            }
+        }
         $fso = new File($targetPath, 'w');
-        $file_content = base64_decode(str_replace($matches[1], '', $base64_centent));
+        $file_content = base64_decode(str_replace($matches[1], '', $base64Centent));
         $result = $fso->fwrite($file_content);
         if (in_array($result, [0, false])) {
-            throw new FileException('上传失败');
+            throw new FileException($targetPath, '上传失败');
         }
         $size = $fso->getSize();
         unset($fso);
@@ -182,6 +179,7 @@ class Local extends UploadAbstract implements UploadHandler
         $url = $this->cfg['domain'] . $path;
 
         $data = [
+            'key'       => $key,
             'name'      => $name,
             'path'      => $path,
             'url'       => $url,
@@ -191,46 +189,45 @@ class Local extends UploadAbstract implements UploadHandler
             'sha1'      => $sha1,
 
             'dir'       => $dir,
-            'full_path' => $targetPath,
-
-            'key' => $file_key,
+            'full_path' => $targetPath
         ];
         return $data;
     }
 
     /**
      * 上传远程文件
-     *
-     * 参数 `$extension`：不指定则根据URL、MIME进行猜测
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $url       URL
-     * @param string|null $extension 后缀名
-     * @param string|null $type      指定类型
-     * @param string|null $file_key  文件路径标识
+     * @param string      $url     URL
+     * @param string|null $key     文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function uploadRemote(string $url, string $extension = null, string $type = null, string $file_key = null): array
+    public function uploadRemote(string $url, ?string $key = null): array
     {
         $origUrl = $url;
         $extension = pathinfo($origUrl, PATHINFO_EXTENSION);
-        [$file_key, $dir, $name, $targetPath] = $this->getPathInfo($file_key, $type, $extension);
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension);
 
         $content = file_get_contents($url);
         if ($content === false) {
-            throw new FileException('获取远程文件时发生错误');
+            throw new FileException('', '获取远程文件时发生错误');
         }
 
+        if (is_file($targetPath)) {
+            if ($this->replace) {
+                unlink($targetPath);
+            } else {
+                throw new FileException($targetPath, '文件已存在！');
+            }
+        }
         $fso = new File($targetPath, 'w');
         $result = $fso->fwrite($content);
         if (!$result) {
-            throw new FileException('上传失败');
+            throw new FileException($targetPath, '上传失败');
         }
         $mime = $fso->getMime();
         unset($fso);
 
         if (empty($extension)) {
-            [$targetPath, $name, $extension] = $this->handleNoExtensionFile($dir, $name);
+            [$targetPath, $name, $extension, $key] = $this->handleNoExtensionFile($dir, $name, $key);
         }
 
         $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
@@ -242,6 +239,7 @@ class Local extends UploadAbstract implements UploadHandler
         $sha1 = hash_file('sha1', $targetPath);
 
         $data = [
+            'key'       => $key,
             'name'      => $name,
             'path'      => $path,
             'url'       => $url,
@@ -254,7 +252,6 @@ class Local extends UploadAbstract implements UploadHandler
             'full_path' => $targetPath,
             'orig_url'  => $origUrl,
 
-            'key'    => $file_key,
             'extend' => [
                 'image_width'  => $imagewidth,
                 'image_height' => $imageheight,
@@ -265,13 +262,13 @@ class Local extends UploadAbstract implements UploadHandler
 
     /**
      * 分块上传：初始化
-     * @param string|null $file_key 文件路径标识，不指定则自动生成
-     * @param string|null $type     指定类型
-     * @return string 返回文件路径标识
+     * @param string|null $key       文件路径标识，不指定则自动生成。
+     * @param int|null    $blobCount 分片总数量，建议指定该参数。
+     * @return string 返回文件路径标识，该标识用于后续的分块上传。
      */
-    public function uploadLargeInit(string $file_key = null, string $type = null): string
+    public function uploadLargeInit(?string $key = null, ?int $blobCount = null): string
     {
-        if (is_null($file_key)) {
+        if (is_null($key)) {
             $sdir = $this->getSaveDir($type);
             $save_name = uniqid();
             $file_key = $sdir . '/' . $save_name;
@@ -297,7 +294,7 @@ class Local extends UploadAbstract implements UploadHandler
         $fso = new File($save_file, 'a');
         $result = $fso->fwrite($content);
         if (!$result) {
-            throw new FileException('上传失败');
+            throw new FileException($save_file, '上传失败');
         }
         unset($fso);
     }
@@ -361,15 +358,15 @@ class Local extends UploadAbstract implements UploadHandler
     public function uploadLarge(string $name, int $blob_index, int $blob_count, string $file_key = null, string $extension = null, string $type = null): array
     {
         if (empty($name)) {
-            throw new FileException('请指定要上传的文件。');
+            throw new FileException('', '请指定要上传的文件。');
         }
         $uploadFile = $this->getUploadedFile($name);
         if (empty($uploadFile)) {
-            throw new FileException('没有找到要上传的文件。');
+            throw new FileException('', '没有找到要上传的文件。');
         }
 
         if ($blob_index != 0 && is_null($file_key)) {
-            throw new FileException('请指定参数$file_key。');
+            throw new FileException('', '请指定参数$file_key。');
         }
 
         [$file_key, $dir, $save_name, $save_file] = $this->getPathInfo($file_key, $type, $extension);
@@ -489,34 +486,37 @@ class Local extends UploadAbstract implements UploadHandler
 
     /**
      * 处理上传文件
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
      * @param UploadedFile $uploadFile 已上传的文件
-     * @param string|null  $type       指定类型
-     * @param string|null  $file_key   文件路径标识
-     * @return array
+     * @param string|null  $key        文件路径标识
+     * @return array 返回保存文件的相关信息
      */
-    protected function handleUpload(UploadedFile $uploadFile, string $type = null, string $file_key = null): array
+    protected function handleUpload(UploadedFile $uploadFile, string $key = null): array
     {
         $origName = $uploadFile->getClientFilename();
         if (is_null($origName)) {
-            throw new FileException('文件错误！');
+            throw new FileException('', '文件错误！');
         }
         $mime = $uploadFile->getClientMediaType();
         if (is_null($mime)) {
-            throw new FileException('无法识别文件！');
+            throw new FileException($origName, '无法识别文件！');
         }
         $extension = MIME::getExtensionByMime($mime);
         if (empty($extension)) {
-            throw new FileException('禁止上传无后缀名的文件');
+            throw new FileException($origName, '禁止上传无后缀名的文件');
         }
         $this->checkExtension($extension);
 
         $size = $uploadFile->getSize();
         $tmpNmae = $uploadFile->getTmpName();
 
-        [$file_key, $dir, $save_name, $targetPath] = $this->getPathInfo($file_key, $type, $extension);
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension);
+        if (is_file($targetPath)) {
+            if ($this->replace) {
+                unlink($targetPath);
+            } else {
+                throw new FileException($targetPath, '文件已存在！');
+            }
+        }
         $uploadFile->moveTo($targetPath);
 
         [$imagewidth, $imageheight] = $this->imageResize($targetPath, $extension);
@@ -524,7 +524,8 @@ class Local extends UploadAbstract implements UploadHandler
         $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
         $url = $this->cfg['domain'] . $path;
         $data = [
-            'name'      => $save_name,                      // 保存文件名
+            'key'       => $key,                            // 文件路径标识
+            'name'      => $name,                           // 保存文件名
             'path'      => $path,                           // WEB路径
             'url'       => $url,                            // 完整URL
             'size'      => $size,                           // 文件大小
@@ -537,8 +538,6 @@ class Local extends UploadAbstract implements UploadHandler
             'orig_name' => $origName,    // 原文件名
             'tmp_name'  => $tmpNmae,     // 上传临时文件路径
 
-            'key' => $file_key,  // 文件路径标识
-
             'extend' => [
                 'image_width'  => $imagewidth,
                 'image_height' => $imageheight,
@@ -549,44 +548,45 @@ class Local extends UploadAbstract implements UploadHandler
 
     /**
      * 获取路径相关信息
-     * @param string|null $file_key  文件路径标识
-     * @param string|null $type      指定类型
+     * @param string|null $key       文件唯一标识
      * @param string|null $extension 后缀名
      * @return array [路径标识, 保存目录, 保存文件名, 保存路径]
      */
-    protected function getPathInfo(string $file_key = null, string $type = null, string $extension = null): array
+    protected function getPathInfo(string $key = null, string $extension = null): array
     {
-        if (is_null($file_key)) {
-            $sdir = $this->getSaveDir($type);
+        if (is_null($key)) {
+            $sdir = $this->getSaveDir();
             $dir = $this->cfg['saveDir'] . '/' . $sdir;
             if (empty($extension)) {
                 $name = uniqid();
             } else {
                 $name = uniqid() . '.' . $extension;
             }
-            $file_key = $sdir . '/' . $name;
+            $key = $sdir . '/' . $name;
         } else {
-            $dir = dirname($file_key);
-            $name = basename($file_key);
+            $dir = dirname($key);
+            $name = basename($key);
         }
         $targetPath = $this->cfg['rootPath'] . '/' . $dir . '/' . $name;
         $targetPath = File::realpath($targetPath, false);
-        return [$file_key, $dir, $name, $targetPath];
+        return [$key, $dir, $name, $targetPath];
     }
 
     /**
      * 处理上传文件没有后缀名的情况
      * @param string $dir  保存目录
      * @param string $name 保存文件名
+     * @param string $key  文件路径标识
      * @return array [文件路径, 文件名, 后缀名]
      */
-    protected function handleNoExtensionFile(string $dir, string $name): array
+    protected function handleNoExtensionFile(string $dir, string $name, string $key): array
     {
         $targetPath = $this->cfg['rootPath'] . $dir . '/' . $name;
         $fso = new File($targetPath);
         $extension = $fso->getExtension();
         if ($extension) {
             $name = $name . '.' . $extension;
+            $key = $key . '.' . $extension;
             $targetPath = $this->cfg['rootPath'] . $dir . '/' . $name;
             $result = $fso->rename($targetPath);  // 重命名为含后缀名文件
             if (!$result) {
@@ -594,6 +594,6 @@ class Local extends UploadAbstract implements UploadHandler
             }
         }
         unset($fso);
-        return [$targetPath, $name, $extension];
+        return [$targetPath, $name, $extension, $key];
     }
 }

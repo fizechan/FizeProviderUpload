@@ -43,6 +43,7 @@ class TestLocal extends TestCase
         ServerRequestFactory::setGlobals($request);
         $cfg = [
             'rootPath' => dirname(__FILE__, 3) . '/temp',
+            'saveDir'  => '/uploads/file'
         ];
         $uploader = new Local($cfg);
         $result = $uploader->uploads('files1');
@@ -57,7 +58,8 @@ class TestLocal extends TestCase
             'domain' => 'https://www.baidu.com',
         ];
         $uploader = new Local($cfg);
-        $result = $uploader->uploadFile(__FILE__);
+        $uploader->setReplace();
+        $result = $uploader->uploadFile(__FILE__, basename(__FILE__));
         var_dump($result);
         self::assertIsArray($result);
     }
@@ -65,12 +67,13 @@ class TestLocal extends TestCase
     public function testUploadBase64()
     {
         $cfg = [
-            'rootPath' => dirname(__FILE__, 3) . '/temp',
             'domain' => 'https://www.baidu.com',
+            'rootPath' => dirname(__FILE__, 3) . '/temp',
+            'saveDir'  => '/uploads/image'
         ];
         $uploader = new Local($cfg);
         $base64 = file_get_contents(dirname(__FILE__, 3) . '/temp/base64_jpg.txt');
-        $result = $uploader->uploadBase64($base64, 'image');
+        $result = $uploader->uploadBase64($base64);
         var_dump($result);
         self::assertIsArray($result);
     }
@@ -78,8 +81,8 @@ class TestLocal extends TestCase
     public function testUploadRemote()
     {
         $cfg = [
-            'rootPath' => dirname(__FILE__, 3) . '/temp',
             'domain' => 'https://www.baidu.com',
+            'rootPath' => dirname(__FILE__, 3) . '/temp',
         ];
         $uploader = new Local($cfg);
         $url = 'https://doc.thinkphp.cn/lfs/55efb6ec3a68586bf4d3894849be6eeb456d80d29c1458984e636bb1d2e346dc';

@@ -48,6 +48,11 @@ abstract class UploadAbstract
     protected $maxSize = 0;
 
     /**
+     * @var bool 是否替换已存在文件
+     */
+    protected $replace = false;
+
+    /**
      * 设置允许上传的文件后缀名
      * @param string $extensions 后缀名，多个以逗号隔开。
      */
@@ -66,11 +71,21 @@ abstract class UploadAbstract
     }
 
     /**
+     * 设置是否替换已存在文件
+     * @param bool $replace
+     */
+    public function setReplace(bool $replace = true)
+    {
+        $this->replace = $replace;
+    }
+
+    /**
      * 获取保存的文件夹路径部分
      * @param string|null $type 指定类型
      * @return string
+     * @todo 考虑移除$type参数
      */
-    protected function getSaveDir(?string $type): string
+    protected function getSaveDir(?string $type = null): string
     {
         $ym = date('Ym');
         $dy = date('d');
