@@ -26,10 +26,10 @@ class Local extends UploadAbstract implements UploadHandler
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null)
     {
         $defaultCfg = [
-            'domain'                              => null,                                  //上传时指定文件URL主机域名。为null表示直接获取当前域名
-            'rootPath'                            => '.',                                  // 根目录
-            'saveDir'                             => '/uploads',                             //上传路径
-            'tempDir'                             => '/temp',                                // 临时文件路径
+            'domain'   => null,                                   //上传时指定文件URL主机域名。为null表示直接获取当前域名
+            'rootPath' => '.',                                    // 根目录
+            'saveDir'  => '/uploads',                             //上传路径
+            'tempDir'  => '/temp',                                // 临时文件路径
 
             'multiple'                            => false,                                 // 是否支持批量上传
             "max_upload_amount_per_minute_logged" => 60,                                    // @todo 属于业务逻辑，考虑外移。
@@ -109,7 +109,7 @@ class Local extends UploadAbstract implements UploadHandler
         unset($orig_file);
         $this->checkExtension($extension);
 
-        [$file_key, $dir, $save_name, $targetPath] = $this->getPathInfo($file_key, $type, $extension);
+        [$file_key, $dir, $name, $targetPath] = $this->getPathInfo($file_key, $type, $extension);
         $size = filesize($file_path);
 
         $fso = new File($targetPath, 'w');
@@ -120,24 +120,25 @@ class Local extends UploadAbstract implements UploadHandler
         $mime = $fso->getMime();
         unset($fso);
 
+        $sha1 = hash_file('sha1', $targetPath);
         $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
         $url = $this->cfg['domain'] . $path;
 
         $data = [
-            'name'          => $save_name,
-            'path'          => $path,
-            'url'           => $url,
-            'size'          => $size,
-            'mime'          => $mime,
-            'extension'     => $extension,
-            'sha1'          => hash_file('sha1', $targetPath),
+            'name'      => $name,
+            'path'      => $path,
+            'url'       => $url,
+            'size'      => $size,
+            'mime'      => $mime,
+            'extension' => $extension,
+            'sha1'      => $sha1,
 
-            'dir'           => $dir,
-            'full_path'     => $targetPath,
-            'orig_name'     => $origName,
-            'orig_path'     => $origPath,  // 原文件路径
+            'dir'       => $dir,
+            'full_path' => $targetPath,
+            'orig_name' => $origName,
+            'orig_path' => $origPath,  // 原文件路径
 
-            'key'          => $file_key,
+            'key' => $file_key,
         ];
         return $data;
     }
@@ -165,7 +166,7 @@ class Local extends UploadAbstract implements UploadHandler
         }
         $this->checkExtension($extension);
 
-        [$file_key, $dir, $save_name, $targetPath] = $this->getPathInfo($file_key, $type, $extension);
+        [$file_key, $dir, $name, $targetPath] = $this->getPathInfo($file_key, $type, $extension);
 
         $fso = new File($targetPath, 'w');
         $file_content = base64_decode(str_replace($matches[1], '', $base64_centent));
@@ -176,22 +177,23 @@ class Local extends UploadAbstract implements UploadHandler
         $size = $fso->getSize();
         unset($fso);
 
+        $sha1 = hash_file('sha1', $targetPath);
         $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
         $url = $this->cfg['domain'] . $path;
 
         $data = [
-            'name'          => $save_name,
-            'path'          => $path,
-            'url'           => $url,
-            'size'          => $size,
-            'mime'          => $mime,
-            'extension'     => $extension,
-            'sha1'          => hash_file('sha1', $targetPath),
+            'name'      => $name,
+            'path'      => $path,
+            'url'       => $url,
+            'size'      => $size,
+            'mime'      => $mime,
+            'extension' => $extension,
+            'sha1'      => $sha1,
 
-            'dir'           => $dir,
-            'full_path'     => $targetPath,
+            'dir'       => $dir,
+            'full_path' => $targetPath,
 
-            'key'          => $file_key,
+            'key' => $file_key,
         ];
         return $data;
     }
@@ -210,9 +212,9 @@ class Local extends UploadAbstract implements UploadHandler
      */
     public function uploadRemote(string $url, string $extension = null, string $type = null, string $file_key = null): array
     {
-        $original_url = $url;
-        $extension = pathinfo($original_url, PATHINFO_EXTENSION);
-        [$file_key, $dir, $save_name, $targetPath] = $this->getPathInfo($file_key, $type, $extension);
+        $origUrl = $url;
+        $extension = pathinfo($origUrl, PATHINFO_EXTENSION);
+        [$file_key, $dir, $name, $targetPath] = $this->getPathInfo($file_key, $type, $extension);
 
         $content = file_get_contents($url);
         if ($content === false) {
@@ -228,28 +230,34 @@ class Local extends UploadAbstract implements UploadHandler
         unset($fso);
 
         if (empty($extension)) {
-            [$save_file, $file_key, $extension] = $this->handleNoExtensionFile($dir, $save_name, $file_key);
+            [$targetPath, $name, $extension] = $this->handleNoExtensionFile($dir, $name);
         }
 
-        $path = $file_key;
-        $full_path = $this->cfg['dir'] . '/' . $path;
-        $domain = $this->cfg['domain'];
-        $domain = $domain ?: Request::domain();
-        $url = $domain . '/' . $full_path;
-        [$imagewidth, $imageheight] = $this->getImageSize($save_file, $extension);  // 文件直传故不进行图片压缩
+        $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
+        $url = $this->cfg['domain'] . $path;
+
+        [$imagewidth, $imageheight] = $this->getImageSize($targetPath, $extension);  // 文件直传故不进行图片压缩
+
+        $size = filesize($targetPath);
+        $sha1 = hash_file('sha1', $targetPath);
 
         $data = [
-            'url'          => $url,
-            'path'         => $path,
-            'extension'    => $extension,
-            'image_width'  => $imagewidth,
-            'image_height' => $imageheight,
-            'file_size'    => filesize($save_file),
-            'mime_type'    => $mime,
-            'sha1'         => hash_file('sha1', $save_file),
-            'extend'       => [
-                'original_url' => $original_url,
-                'full_path'    => $full_path
+            'name'      => $name,
+            'path'      => $path,
+            'url'       => $url,
+            'size'      => $size,
+            'mime'      => $mime,
+            'extension' => $extension,
+            'sha1'      => $sha1,
+
+            'dir'       => $dir,
+            'full_path' => $targetPath,
+            'orig_url'  => $origUrl,
+
+            'key'    => $file_key,
+            'extend' => [
+                'image_width'  => $imagewidth,
+                'image_height' => $imageheight,
             ]
         ];
         return $data;
@@ -516,23 +524,25 @@ class Local extends UploadAbstract implements UploadHandler
         $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
         $url = $this->cfg['domain'] . $path;
         $data = [
-            'name'          => $save_name,  // 保存文件名
-            'path'          => $path,       // WEB路径
-            'url'           => $url,  // 完整URL
-            'size'          => $size,  // 文件大小
-            'mime'          => $mime,  // MIME类型
-            'extension'     => $extension,  // 后缀名
-            'sha1'          => hash_file('sha1', $targetPath),  // 文件SHA1
+            'name'      => $save_name,                      // 保存文件名
+            'path'      => $path,                           // WEB路径
+            'url'       => $url,                            // 完整URL
+            'size'      => $size,                           // 文件大小
+            'mime'      => $mime,                           // MIME类型
+            'extension' => $extension,                      // 后缀名
+            'sha1'      => hash_file('sha1', $targetPath),  // 文件SHA1
 
-            'dir'           => $dir,  // 生成路径
-            'full_path'     => $targetPath,  // 本机完整路径
-            'orig_name'     => $origName,  // 原文件名
-            'tmp_name'      => $tmpNmae,  // 上传临时文件路径
+            'dir'       => $dir,         // 生成路径
+            'full_path' => $targetPath,  // 本机完整路径
+            'orig_name' => $origName,    // 原文件名
+            'tmp_name'  => $tmpNmae,     // 上传临时文件路径
 
-            'key'          => $file_key,  // 文件路径标识
+            'key' => $file_key,  // 文件路径标识
 
-            'image_width'  => $imagewidth,
-            'image_height' => $imageheight,
+            'extend' => [
+                'image_width'  => $imagewidth,
+                'image_height' => $imageheight,
+            ]
         ];
         return $data;
     }
@@ -550,42 +560,40 @@ class Local extends UploadAbstract implements UploadHandler
             $sdir = $this->getSaveDir($type);
             $dir = $this->cfg['saveDir'] . '/' . $sdir;
             if (empty($extension)) {
-                $save_name = uniqid();
+                $name = uniqid();
             } else {
-                $save_name = uniqid() . '.' . $extension;
+                $name = uniqid() . '.' . $extension;
             }
-            $file_key = $sdir . '/' . $save_name;
+            $file_key = $sdir . '/' . $name;
         } else {
             $dir = dirname($file_key);
-            $save_name = basename($file_key);
+            $name = basename($file_key);
         }
-        $targetPath = $this->cfg['rootPath'] . '/' . $dir . '/' . $save_name;
+        $targetPath = $this->cfg['rootPath'] . '/' . $dir . '/' . $name;
         $targetPath = File::realpath($targetPath, false);
-        return [$file_key, $dir, $save_name, $targetPath];
+        return [$file_key, $dir, $name, $targetPath];
     }
 
     /**
      * 处理上传文件没有后缀名的情况
-     * @param string $dir       保存目录
-     * @param string $save_name 保存文件名
-     * @param string $file_key  文件路径标识
-     * @return array [更新后的文件路径, 更新后的文件路径标识]
+     * @param string $dir  保存目录
+     * @param string $name 保存文件名
+     * @return array [文件路径, 文件名, 后缀名]
      */
-    protected function handleNoExtensionFile(string $dir, string $save_name, string $file_key): array
+    protected function handleNoExtensionFile(string $dir, string $name): array
     {
-        $save_file = $dir . '/' . $save_name;
-        $fso = new File($save_file);
+        $targetPath = $this->cfg['rootPath'] . $dir . '/' . $name;
+        $fso = new File($targetPath);
         $extension = $fso->getExtension();
         if ($extension) {
-            $save_name = $save_name . '.' . $extension;
-            $file_key = $file_key . '.' . $extension;
-            $save_file = $dir . '/' . $save_name;
-            $result = $fso->rename($save_file);  // 重命名为含后缀名文件
+            $name = $name . '.' . $extension;
+            $targetPath = $this->cfg['rootPath'] . $dir . '/' . $name;
+            $result = $fso->rename($targetPath);  // 重命名为含后缀名文件
             if (!$result) {
                 throw new FileException('保存文件时发生错误！');
             }
         }
         unset($fso);
-        return [$save_file, $file_key, $extension];
+        return [$targetPath, $name, $extension];
     }
 }

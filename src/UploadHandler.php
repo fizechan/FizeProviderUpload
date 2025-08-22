@@ -109,6 +109,7 @@ interface UploadHandler
      * 分块上传：上传块
      * @param string $file_key 文件路径标识
      * @param string $content  块内容
+     * @todo 新增$index参数
      */
     public function uploadLargePart(string $file_key, string $content);
 
@@ -156,6 +157,7 @@ interface UploadHandler
      * @param string|null $file_key  文件路径标识
      * @return array
      * @todo 考虑移除$type参数，新增$replace参数
+     * @todo 注意需支持多进程非顺序上传。
      */
     public function uploadParts(array $parts, ?string $extension = null, ?string $type = null, ?string $file_key = null): array;
 

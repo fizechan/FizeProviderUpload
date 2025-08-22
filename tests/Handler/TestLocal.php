@@ -77,8 +77,12 @@ class TestLocal extends TestCase
 
     public function testUploadRemote()
     {
-        $url = 'https://e.topthink.com/api/item/782/pic';
-        $uploader = new Local();
+        $cfg = [
+            'rootPath' => dirname(__FILE__, 3) . '/temp',
+            'domain' => 'https://www.baidu.com',
+        ];
+        $uploader = new Local($cfg);
+        $url = 'https://doc.thinkphp.cn/lfs/55efb6ec3a68586bf4d3894849be6eeb456d80d29c1458984e636bb1d2e346dc';
         $result = $uploader->uploadRemote($url);
         var_dump($result);
         self::assertIsArray($result);
