@@ -77,32 +77,33 @@ interface UploadHandler
 
     /**
      * 分块上传：初始化
-     * @param string|null $key       文件路径标识，不指定则自动生成。
      * @param int|null    $blobCount 分片总数量，建议指定该参数。
-     * @return string 返回文件路径标识，该标识用于后续的分块上传。
+     * @param string|null $uuid      唯一识别码，不指定则自动生成。
+     * @return string 唯一识别码，用于后续的分块上传。
      */
-    public function uploadLargeInit(?string $key = null, ?int $blobCount = null): string;
+    public function uploadLargeInit(?int $blobCount = null, ?string $uuid = null): string;
 
     /**
      * 分块上传：上传块
-     * @param string   $key       文件路径标识
+     * @param string   $uuid      唯一识别码
      * @param string   $content   块内容
      * @param int|null $blobIndex 当前分片下标，建议指定该参数。
      */
-    public function uploadLargePart(string $key, string $content, ?int $blobIndex = null);
+    public function uploadLargePart(string $uuid, string $content, ?int $blobIndex = null);
 
     /**
      * 分块上传：完成上传
-     * @param string $key 文件路径标识
-     * @return array 返回保存文件的相关信息，文件路径标识会根据情况附加后缀名。
+     * @param string      $uuid      唯一识别码
+     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @return array 返回保存文件的相关信息
      */
-    public function uploadLargeComplete(string $key): array;
+    public function uploadLargeComplete(string $uuid, ?string $extension = null): array;
 
     /**
      * 分块上传：终止上传
-     * @param string $key 文件路径临时标识
+     * @param string $uuid 唯一识别码
      */
-    public function uploadLargeAbort(string $key);
+    public function uploadLargeAbort(string $uuid);
 
     /**
      * 大文件分片上传
@@ -113,12 +114,12 @@ interface UploadHandler
      * @param string      $name      文件域表单名
      * @param int         $blobIndex 当前分片下标
      * @param int         $blobCount 分片总数量
-     * @param string|null $key       文件路径标识
+     * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @param string|null $extension 后缀名
      *
      * @return array
      */
-    public function uploadLarge(string $name, int $blobIndex, int $blobCount, ?string $key = null, ?string $extension = null): array;
+    public function uploadLarge(string $name, int $blobIndex, int $blobCount, ?string $uuid = null, ?string $extension = null): array;
 
     /**
      * 上传多个分块并合并成文件
