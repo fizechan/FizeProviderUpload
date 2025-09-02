@@ -55,8 +55,8 @@ class Local extends UploadAbstract implements UploadHandler
 
     /**
      * 单文件上传
-     * @param string      $name    文件域表单名
-     * @param string|null $key     文件路径标识
+     * @param string      $name 文件域表单名
+     * @param string|null $key  文件路径标识
      * @return array 返回保存文件的相关信息
      */
     public function upload(string $name, ?string $key = null): array
@@ -67,8 +67,8 @@ class Local extends UploadAbstract implements UploadHandler
 
     /**
      * 多文件上传
-     * @param string     $name    文件域表单名
-     * @param array|null $keys    文件路径标识
+     * @param string     $name 文件域表单名
+     * @param array|null $keys 文件路径标识
      * @return array 返回每个保存文件的相关信息组成的数组
      */
     public function uploads(string $name, ?array $keys = null): array
@@ -196,8 +196,8 @@ class Local extends UploadAbstract implements UploadHandler
 
     /**
      * 上传远程文件
-     * @param string      $url     URL
-     * @param string|null $key     文件路径标识
+     * @param string      $url URL
+     * @param string|null $key 文件路径标识
      * @return array 返回保存文件的相关信息
      */
     public function uploadRemote(string $url, ?string $key = null): array
@@ -262,33 +262,46 @@ class Local extends UploadAbstract implements UploadHandler
 
     /**
      * 分块上传：初始化
-     * @param string|null $key       文件路径标识，不指定则自动生成。
      * @param int|null    $blobCount 分片总数量，建议指定该参数。
-     * @return string 返回文件路径标识，该标识用于后续的分块上传。
+     * @param string|null $uuid      唯一识别码，不指定则自动生成。
+     * @return string 唯一识别码，用于后续的分块上传。
      */
-    public function uploadLargeInit(?string $key = null, ?int $blobCount = null): string
+    public function uploadLargeInit(?int $blobCount = null, ?string $uuid = null): string
     {
-        if (is_null($key)) {
-            $sdir = $this->getSaveDir($type);
-            $save_name = uniqid();
-            $file_key = $sdir . '/' . $save_name;
-        } else {  // 指定$file_key时如果有已存在的上传临时文件则删除作废以重新上传。
-            $save_part_file = $this->cfg['dir'] . '/' . $file_key . '.tmp';
-            if (is_file($save_part_file)) {
-                unlink($save_part_file);
-            }
+        if (is_null($uuid)) {
+            $uuid = uniqid();
         }
-        return $file_key;
+        $info = $this->getPartUploadInfo($uuid);
+        if ($info) {
+            if (isset($info['parts'])) {
+                foreach ($info['parts'] as $part) {
+                    if (is_file($part)) {
+                        unlink($part);
+                    }
+                }
+            }
+            $this->deletPartUploadInfo($uuid);
+        }
+        $info = [
+            'uuid'      => $uuid,
+            'blobCount' => $blobCount,
+            'parts'     => (object)[],
+        ];
+        $this->savePartUploadInfo($uuid, $info);
+        return $uuid;
     }
 
     /**
      * 分块上传：上传块
-     * @param string $file_key 文件路径标识
-     * @param string $content  块内容
+     * @param string   $uuid      唯一识别码
+     * @param string   $content   块内容
+     * @param int|null $blobIndex 当前分片下标，建议指定该参数。
      */
-    public function uploadLargePart(string $file_key, string $content)
+    public function uploadLargePart(string $uuid, string $content, ?int $blobIndex = null)
     {
-        [, $dir, $save_name] = $this->getPathInfo($file_key);
+        $info = $this->getPartUploadInfo($uuid);
+        self::assertHasKey($info, 'parts');
+        [, $dir, $save_name] = $this->getPathInfo($uuid);
         $save_part_name = $save_name . '.tmp';
         $save_file = $this->cfg['dir'] . '/' . $dir . '/' . $save_part_name;
         $fso = new File($save_file, 'a');

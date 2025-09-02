@@ -33,11 +33,6 @@ abstract class UploadAbstract
     protected $tempDir;
 
     /**
-     * @var string 记录上传临时信息所用的文件名前缀
-     */
-    protected $tempPre = '';
-
-    /**
      * @var string 允许上传的文件后缀名
      */
     protected $allowExtensions = "*";
@@ -148,12 +143,12 @@ abstract class UploadAbstract
 
     /**
      * 获取临时信息
-     * @param string $key 文件路径标识
+     * @param string $uuid 唯一识别码
      * @return array
      */
-    protected function getPartUploadInfo(string $key): array
+    protected function getPartUploadInfo(string $uuid): array
     {
-        $info_file = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        $info_file = $this->tempDir . '/' . $uuid . '.json';
         if (!File::exists($info_file)) {
             return [];
         }
@@ -167,15 +162,15 @@ abstract class UploadAbstract
 
     /**
      * 保存临时信息
-     * @param string $key       文件路径标识
+     * @param string $uuid      唯一识别码
      * @param array  $keyValues 键值对
      */
-    protected function savePartUploadInfo(string $key, array $keyValues)
+    protected function savePartUploadInfo(string $uuid, array $keyValues)
     {
-        $content = $this->getPartUploadInfo($key);
+        $content = $this->getPartUploadInfo($uuid);
         $content = array_merge($content, $keyValues);
         $content = Json::encode($content, JSON_UNESCAPED_UNICODE);
-        $info_file = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        $info_file = $this->tempDir . '/' . $uuid . '.json';
         $file = new File($info_file, 'w');
         $file->flock(LOCK_EX);
         $file->fwrite($content);
@@ -183,11 +178,11 @@ abstract class UploadAbstract
 
     /**
      * 删除临时信息
-     * @param string $key 文件路径标识
+     * @param string $uuid 唯一识别码
      */
-    protected function deletPartUploadInfo(string $key)
+    protected function deletPartUploadInfo(string $uuid)
     {
-        $info_file = $this->tempDir . '/' . $this->tempPre . md5($key) . '.json';
+        $info_file = $this->tempDir . '/' . $uuid. '.json';
         unlink($info_file);
     }
 
@@ -197,7 +192,7 @@ abstract class UploadAbstract
      * @param string $key   键名
      * @throws Exception
      */
-    protected function assertHasKey(array $array, string $key)
+    protected static function assertHasKey(array $array, string $key)
     {
         if (!isset($array[$key])) {
             throw new Exception("缺少必要参数：$key");
