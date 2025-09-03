@@ -9,6 +9,7 @@ use Fize\IO\MIME;
 use Fize\Web\Request;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
+use RuntimeException;
 
 
 /**
@@ -50,7 +51,7 @@ class Local extends UploadAbstract implements UploadHandler
         if (is_null($tempDir)) {
             $tempDir = $this->cfg['tempDir'];
         }
-        $this->tempDir = $tempDir;
+        $this->tempDirPath = $this->cfg['rootPath'] . $tempDir;
     }
 
     /**
@@ -272,7 +273,7 @@ class Local extends UploadAbstract implements UploadHandler
             $uuid = uniqid();
         }
         $info = $this->getPartUploadInfo($uuid);
-        if ($info) {
+        if ($info) {  // 存在旧的分片信息则删除重新初始化。
             if (isset($info['parts'])) {
                 foreach ($info['parts'] as $part) {
                     if (is_file($part)) {
@@ -296,139 +297,149 @@ class Local extends UploadAbstract implements UploadHandler
      * @param string   $uuid      唯一识别码
      * @param string   $content   块内容
      * @param int|null $blobIndex 当前分片下标，建议指定该参数。
+     * @return array 返回保存文件的相关信息
      */
-    public function uploadLargePart(string $uuid, string $content, ?int $blobIndex = null)
+    public function uploadLargePart(string $uuid, string $content, ?int $blobIndex = null): array
     {
         $info = $this->getPartUploadInfo($uuid);
         self::assertHasKey($info, 'parts');
-        [, $dir, $save_name] = $this->getPathInfo($uuid);
-        $save_part_name = $save_name . '.tmp';
-        $save_file = $this->cfg['dir'] . '/' . $dir . '/' . $save_part_name;
-        $fso = new File($save_file, 'a');
+        if (is_null($blobIndex)) {
+            $blobIndex = count($info['parts']);
+        }
+        $tempfileName = $uuid;
+        if ($info['blobCount']) {
+            $tempfileName .= '-' . $info['blobCount'];
+        }
+        $tempfileName .= '-' . $blobIndex;
+        $tempfileName .= '.tmp';
+        $tempFile = $this->tempDirPath . '/' . $tempfileName;
+        $fso = new File($tempFile, 'wb');
         $result = $fso->fwrite($content);
         if (!$result) {
-            throw new FileException($save_file, '上传失败');
+            throw new FileException($tempFile, '上传失败');
         }
         unset($fso);
+        $info['parts']["BLOB-{$blobIndex}"] = $tempfileName;
+        $this->savePartUploadInfo($uuid, $info);
+        return $info;
     }
 
     /**
      * 分块上传：完成上传
-     * @param string      $file_key 文件路径标识
-     * @param string|null $fname    原文件名
-     * @param string|null $mimeType 指定Mime
+     * @param string      $uuid      唯一识别码
+     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
      * @return array 返回保存文件的相关信息
      */
-    public function uploadLargeComplete(string $file_key, string $fname = null, string $mimeType = null): array
+    public function uploadLargeComplete(string $uuid, ?string $extension = null): array
     {
-        [, $dir, $save_name, $save_file] = $this->getPathInfo($file_key);
-        $save_part_name = $save_name . '.tmp';
-        $fso = new File($this->cfg['dir'] . '/' . $dir . '/' . $save_part_name);
-        $fso->rename($save_file);
-        unset($fso);
-        $extension = pathinfo($save_file, PATHINFO_EXTENSION);
-        if (empty($extension)) {
-            [$save_file, $file_key, $extension] = $this->handleNoExtensionFile($dir, $save_name, $file_key);
+        $info = $this->getPartUploadInfo($uuid);
+        self::assertHasKey($info, 'parts');
+        if ($info['blobCount']) {
+            if ($info['blobCount'] != count($info['parts'])) {
+                throw new RuntimeException('分片未全部上传！');
+            }
         }
-        $save_file = realpath($save_file);
+
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo(null, $extension);
+
+        // 按序合并
+        $fso = new File($targetPath, 'a+b');
+        for ($i = 0; $i < count($info['parts']); $i++) {
+            $tempFile = $this->tempDirPath . '/' . $info['parts']["BLOB-{$i}"];
+            if (!is_file($tempFile)) {
+                throw new RuntimeException('分片文件不存在！');
+            }
+            $fso->fwrite(file_get_contents($tempFile));
+        }
+        if (!$extension) {
+            $extension = $fso->getExtension();
+            if ($extension) {
+                $key .= "." . $extension;
+                $name .= "." . $extension;
+                $targetPath .= "." . $extension;
+                $fso->rename($name);
+            }
+        }
+        $mime = $fso->getMime();
+        unset($fso);
+
+        // 删除相关临时文件
+        foreach ($info['parts'] as $tempfileName) {
+            $tempFile = $this->tempDirPath . '/' . $tempfileName;
+            unlink($tempFile);
+        }
+        $this->deletPartUploadInfo($uuid);
+
+        $size = filesize($targetPath);
+        $sha1 = hash_file('sha1', $targetPath);
+        $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
+        $url = $this->cfg['domain'] . $path;
         return [
-            'file_key' => $file_key,
-            'fname'    => $fname,
-            'mimeType' => $mimeType,
-            'extend'   => [
-                'save_file' => $save_file,
-                'extension' => $extension
-            ]
+            'key'       => $key,                            // 文件路径标识
+            'name'      => $name,                           // 保存文件名
+            'path'      => $path,                           // WEB路径
+            'url'       => $url,                            // 完整URL
+            'size'      => $size,                           // 文件大小
+            'mime'      => $mime,                           // MIME类型
+            'extension' => $extension,                      // 后缀名
+            'sha1'      => $sha1,                           // 文件SHA1
+            'uuid'      => $uuid,
+
+            'dir'       => $dir,         // 生成路径
+            'full_path' => $targetPath,  // 本机完整路径
         ];
     }
 
     /**
      * 分块上传：终止上传
-     * @param string $file_key 文件路径标识
+     * @param string $uuid 唯一识别码
      */
-    public function uploadLargeAbort(string $file_key)
+    public function uploadLargeAbort(string $uuid)
     {
-        [, $dir, $save_name] = $this->getPathInfo($file_key);
-        $save_part_name = $save_name . '.tmp';
-        $save_part_file = $this->cfg['dir'] . '/' . $dir . '/' . $save_part_name;
-        unlink($save_part_file);
+        $info = $this->getPartUploadInfo($uuid);
+        self::assertHasKey($info, 'parts');
+        // 删除相关临时文件
+        foreach ($info['parts'] as $tempfileName) {
+            $tempFile = $this->tempDirPath . '/' . $tempfileName;
+            unlink($tempFile);
+        }
+        $this->deletPartUploadInfo($uuid);
     }
 
     /**
      * 大文件分片上传
-     *
-     * 参数 `$file_key`：当 $blob_index 为0时填 null 表示自动生成，不为 0 时必填。指定该参数后，参数 $type 无效。
-     * 参数 `$extension`：不指定则根据MIME进行猜测
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * @param string      $name       文件域表单名
-     * @param int         $blob_index 当前分片下标
-     * @param int         $blob_count 分片总数量
-     * @param string|null $file_key   文件路径标识
-     * @param string|null $extension  后缀名
-     * @param string|null $type       指定类型
+     * @param string      $name      文件域表单名
+     * @param int         $blobIndex 当前分片下标，建议指定该参数。
+     * @param int|null    $blobCount 分片总数量，建议指定该参数。
+     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return array
      */
-    public function uploadLarge(string $name, int $blob_index, int $blob_count, string $file_key = null, string $extension = null, string $type = null): array
+    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $extension = null, ?string $uuid = null): array
     {
-        if (empty($name)) {
-            throw new FileException('', '请指定要上传的文件。');
+        // 初始化
+        if (is_null($uuid)) {
+            $uuid = session_id() . "_upload_" . $name;  // 会话端唯一！
         }
+        $info = $this->getPartUploadInfo($uuid);
+        if (!$info) {
+            $this->uploadLargeInit($blobCount, $uuid);
+        }
+
+        // 上传块
         $uploadFile = $this->getUploadedFile($name);
-        if (empty($uploadFile)) {
-            throw new FileException('', '没有找到要上传的文件。');
+        $content = $uploadFile->getStream()->getContents();
+        $info = $this->uploadLargePart($uuid, $content, $blobIndex);
+        if (!$info['blobCount']) {
+            throw new RuntimeException('请指定参数blobCount。');
+        }
+        if ($info['blobCount'] > count($info['parts'])) {
+            return $info;
         }
 
-        if ($blob_index != 0 && is_null($file_key)) {
-            throw new FileException('', '请指定参数$file_key。');
-        }
-
-        [$file_key, $dir, $save_name, $save_file] = $this->getPathInfo($file_key, $type, $extension);
-
-        if ($blob_index == 0) {  // @todo 由于上传无序不能用$blob_index来确定是否已初始化，应使用临时记录文件判断，如果记录文件不存在则表示未初始化。
-            $this->uploadLargeInit($file_key, $type);
-        }
-
-        // 中间
-        // file_key参数在上传过程中必须保持一致
-        $this->uploadLargePart($file_key, $uploadFile->getStream()->getContents());
-        if ($blob_index < $blob_count - 1) {
-            return ['name' => $name, 'blob_index' => $blob_index, 'blob_count' => $blob_count, 'file_key' => $file_key, 'type' => $type];
-        }
-
-        // 结束
-        $this->uploadLargeComplete($file_key);
-
-        $fso = new File($save_file);
-        $mime = $fso->getMime();
-        unset($fso);
-
-        // 处理没有后缀名的情况
-        if (empty($extension)) {
-            [$save_file, $file_key, $extension] = $this->handleNoExtensionFile($dir, $save_name, $file_key);
-        }
-
-        $path = $file_key;
-        $full_path = $this->cfg['dir'] . '/' . $path;
-        $domain = $this->cfg['domain'];
-        $domain = $domain ?: Request::domain();
-        $url = $domain . '/' . $full_path;
-
-        [$imagewidth, $imageheight] = $this->imageResize($save_file, $extension);
-
-        $data = [
-            'url'       => $url,
-            'path'      => $path,
-            'extension' => $extension,
-            'file_size' => filesize($save_file),
-            'mime_type' => $mime,
-            'sha1'      => hash_file('sha1', $save_file),
-            'extend'    => [
-                'image_width'  => $imagewidth,
-                'image_height' => $imageheight,
-                'full_path'    => $full_path
-            ]  // 额外信息
-        ];
-        return $data;
+        // 完成上传
+        $info = $this->uploadLargeComplete($uuid, $extension);
+        return $info;
     }
 
     /**
@@ -438,52 +449,19 @@ class Local extends UploadAbstract implements UploadHandler
      * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
      * 参数 `$file_key`：指定该参数后，参数 $type 无效
      * @param array       $parts     分块数组
-     * @param string|null $extension 后缀名
-     * @param string|null $type      指定类型
-     * @param string|null $file_key  文件路径标识
+     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return array
      */
-    public function uploadParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array
+    public function uploadParts(array $parts, ?string $extension = null, ?string $uuid = null): array
     {
-        [$file_key, $dir, $save_name, $save_file] = $this->getPathInfo($file_key, $type, $extension);
-
-        $this->uploadLargeInit($file_key, $type);
-        foreach ($parts as $part) {
-            $this->uploadLargePart($file_key, $part);
+        $blobCount = count($parts);
+        $uuid = $this->uploadLargeInit($blobCount, $uuid);
+        foreach ($parts as $blobIndex => $content) {
+            $this->uploadLargePart($uuid, $content, $blobIndex);
         }
-        $this->uploadLargeComplete($file_key);
-
-        $fso = new File($save_file);
-        $mime = $fso->getMime();
-        unset($fso);
-
-        // 处理没有后缀名的情况
-        if (empty($extension)) {
-            [$save_file, $file_key, $extension] = $this->handleNoExtensionFile($dir, $save_name, $file_key);
-        }
-
-        $path = $file_key;
-        $full_path = $this->cfg['dir'] . '/' . $path;
-        $domain = $this->cfg['domain'];
-        $domain = $domain ?: Request::domain();
-        $url = $domain . '/' . $full_path;
-
-        [$imagewidth, $imageheight] = $this->imageResize($save_file, $extension);
-
-        $data = [
-            'url'       => $url,
-            'path'      => $path,
-            'extension' => $extension,
-            'file_size' => filesize($save_file),
-            'mime_type' => $mime,
-            'sha1'      => hash_file('sha1', $save_file),
-            'extend'    => [
-                'image_width'  => $imagewidth,
-                'image_height' => $imageheight,
-                'full_path'    => $full_path
-            ]  // 额外信息
-        ];
-        return $data;
+        $info = $this->uploadLargeComplete($uuid, $extension);
+        return $info;
     }
 
     /**

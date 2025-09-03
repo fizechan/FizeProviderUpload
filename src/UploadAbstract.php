@@ -28,9 +28,9 @@ abstract class UploadAbstract
     protected $cfg;
 
     /**
-     * @var string 临时文件夹
+     * @var string 临时文件夹路径
      */
-    protected $tempDir;
+    protected $tempDirPath;
 
     /**
      * @var string 允许上传的文件后缀名
@@ -148,7 +148,7 @@ abstract class UploadAbstract
      */
     protected function getPartUploadInfo(string $uuid): array
     {
-        $info_file = $this->tempDir . '/' . $uuid . '.json';
+        $info_file = $this->tempDirPath . '/' . $uuid . '.json';
         if (!File::exists($info_file)) {
             return [];
         }
@@ -170,7 +170,7 @@ abstract class UploadAbstract
         $content = $this->getPartUploadInfo($uuid);
         $content = array_merge($content, $keyValues);
         $content = Json::encode($content, JSON_UNESCAPED_UNICODE);
-        $info_file = $this->tempDir . '/' . $uuid . '.json';
+        $info_file = $this->tempDirPath . '/' . $uuid . '.json';
         $file = new File($info_file, 'w');
         $file->flock(LOCK_EX);
         $file->fwrite($content);
@@ -182,7 +182,7 @@ abstract class UploadAbstract
      */
     protected function deletPartUploadInfo(string $uuid)
     {
-        $info_file = $this->tempDir . '/' . $uuid. '.json';
+        $info_file = $this->tempDirPath . '/' . $uuid. '.json';
         unlink($info_file);
     }
 

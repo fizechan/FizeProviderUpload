@@ -88,8 +88,9 @@ interface UploadHandler
      * @param string   $uuid      唯一识别码
      * @param string   $content   块内容
      * @param int|null $blobIndex 当前分片下标，建议指定该参数。
+     * @return array 返回保存文件的相关信息
      */
-    public function uploadLargePart(string $uuid, string $content, ?int $blobIndex = null);
+    public function uploadLargePart(string $uuid, string $content, ?int $blobIndex = null): array;
 
     /**
      * 分块上传：完成上传
@@ -107,19 +108,14 @@ interface UploadHandler
 
     /**
      * 大文件分片上传
-     *
-     * 参数 `$file_key`：当 $blob_index 为0时填 null 表示自动生成，不为 0 时必填。指定该参数后，参数 $type 无效。
-     * 参数 `$extension`：不指定则根据MIME进行猜测
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
      * @param string      $name      文件域表单名
-     * @param int         $blobIndex 当前分片下标
-     * @param int         $blobCount 分片总数量
+     * @param int         $blobIndex 当前分片下标，建议指定该参数。
+     * @param int|null    $blobCount 分片总数量，建议指定该参数。
+     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
-     * @param string|null $extension 后缀名
-     *
      * @return array
      */
-    public function uploadLarge(string $name, int $blobIndex, int $blobCount, ?string $uuid = null, ?string $extension = null): array;
+    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $extension = null, ?string $uuid = null): array;
 
     /**
      * 上传多个分块并合并成文件
@@ -128,14 +124,11 @@ interface UploadHandler
      * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
      * 参数 `$file_key`：指定该参数后，参数 $type 无效
      * @param array       $parts     分块数组
-     * @param string|null $extension 后缀名
-     * @param string|null $type      指定类型
-     * @param string|null $key       文件路径标识
+     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return array
-     * @todo 考虑移除$type参数，新增$replace参数
-     * @todo 注意需支持多进程非顺序上传。
      */
-    public function uploadParts(array $parts, ?string $extension = null, ?string $type = null, ?string $key = null): array;
+    public function uploadParts(array $parts, ?string $extension = null, ?string $uuid = null): array;
 
     /**
      * 返回已授权的URL

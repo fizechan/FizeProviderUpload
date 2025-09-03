@@ -55,7 +55,7 @@ class TestLocal extends TestCase
     {
         $cfg = [
             'rootPath' => dirname(__FILE__, 3) . '/temp',
-            'domain' => 'https://www.baidu.com',
+            'domain'   => 'https://www.baidu.com',
         ];
         $uploader = new Local($cfg);
         $uploader->setReplace();
@@ -67,7 +67,7 @@ class TestLocal extends TestCase
     public function testUploadBase64()
     {
         $cfg = [
-            'domain' => 'https://www.baidu.com',
+            'domain'   => 'https://www.baidu.com',
             'rootPath' => dirname(__FILE__, 3) . '/temp',
             'saveDir'  => '/uploads/image'
         ];
@@ -81,7 +81,7 @@ class TestLocal extends TestCase
     public function testUploadRemote()
     {
         $cfg = [
-            'domain' => 'https://www.baidu.com',
+            'domain'   => 'https://www.baidu.com',
             'rootPath' => dirname(__FILE__, 3) . '/temp',
         ];
         $uploader = new Local($cfg);
@@ -89,6 +89,59 @@ class TestLocal extends TestCase
         $result = $uploader->uploadRemote($url);
         var_dump($result);
         self::assertIsArray($result);
+    }
+
+    public function testUploadLargeInit()
+    {
+        $cfg = [
+            'domain'   => 'https://www.baidu.com',
+            'rootPath' => dirname(__FILE__, 3) . '/temp',
+            'saveDir'  => '/uploads/large',
+            'tempDir'  => '/uploads/temp',
+        ];
+        $uploader = new Local($cfg);
+        $uuid = $uploader->uploadLargeInit(3);
+        var_dump($uuid);
+        self::assertIsString($uuid);
+    }
+
+    public function testUploadLargePart()
+    {
+        $cfg = [
+            'domain'   => 'https://www.baidu.com',
+            'rootPath' => dirname(__FILE__, 3) . '/temp',
+            'saveDir'  => '/uploads/large',
+            'tempDir'  => '/uploads/temp',
+        ];
+        $uploader = new Local($cfg);
+        $uuid = '68b80ef1a4a1c';
+        $info = $uploader->uploadLargePart($uuid, file_get_contents('/Users/sjsj/Downloads/360zip_v1.0.4_split_files/chunk_2.part'), 1);
+        var_dump($info);
+        self::assertIsArray($info);
+    }
+
+    public function testUploadLargeComplete()
+    {
+        $cfg = [
+            'domain'   => 'https://www.baidu.com',
+            'rootPath' => dirname(__FILE__, 3) . '/temp',
+            'saveDir'  => '/uploads/large',
+            'tempDir'  => '/uploads/temp',
+        ];
+        $uploader = new Local($cfg);
+        $uuid = '68b80ef1a4a1c';
+        $info = $uploader->uploadLargeComplete($uuid);
+        var_dump($info);
+        self::assertIsArray($info);
+    }
+
+    public function testUploadLargeAbort()
+    {
+        $file_key = 'uploadLargePMP2.pdf';
+        $uploader = new Local();
+        $uploader->uploadLargeAbort($file_key);
+
+        self::assertTrue(true);
     }
 
     public function testUploadLarge()
@@ -109,43 +162,6 @@ class TestLocal extends TestCase
         self::assertIsArray($result);
     }
 
-    public function testUploadLargeInit()
-    {
-        $uploader = new Local();
-        $file_key = $uploader->uploadLargeInit('uploadLargePMP2.pdf');
-        var_dump($file_key);
-        self::assertIsString($file_key);
-    }
-
-    public function testUploadLargePart()
-    {
-        $file_key = 'uploadLargePMP2.pdf';
-
-        $uploader = new Local();
-        $uploader->uploadLargePart($file_key, file_get_contents('E:\work\fuli\commons\code\commons-third\temp\PMBOK2.pdf.1.part'));
-        $uploader->uploadLargePart($file_key, file_get_contents('E:\work\fuli\commons\code\commons-third\temp\PMBOK2.pdf.2.part'));
-
-        self::assertTrue(true);
-    }
-
-    public function testUploadLargeComplete()
-    {
-        $file_key = 'uploadLargePMP2.pdf';
-        $uploader = new Local();
-        $result = $uploader->uploadLargeComplete($file_key);
-        var_dump($result);
-        self::assertIsArray($result);
-    }
-
-    public function testUploadLargeAbort()
-    {
-        $file_key = 'uploadLargePMP2.pdf';
-        $uploader = new Local();
-        $uploader->uploadLargeAbort($file_key);
-
-        self::assertTrue(true);
-    }
-
     public function testGetPreviewUrl()
     {
         $url = 'http://www.baidu.com';
@@ -153,5 +169,99 @@ class TestLocal extends TestCase
         $url = $uploader->getPreviewUrl($url);
         var_dump($url);
         self::assertIsString($url);
+    }
+
+    public function testSplitFileBySize()
+    {
+        // 使用示例
+        $sourceFile = '/Users/sjsj/Downloads/360zip_v1.0.4.dmg'; // 替换为你的大文件路径
+        $targetDir = '/Users/sjsj/Downloads/360zip_v1.0.4_split_files';          // 替换为分割文件存放目录
+        $partSize = 2;                               // 每个分割文件5MB
+        $prefix = 'chunk_';                          // 分割文件前缀
+        if ($this->splitFileBySize($sourceFile, $targetDir, $partSize, $prefix)) {
+            echo "文件分割成功！";
+        } else {
+            echo "文件分割失败。";
+        }
+        self::assertTrue(true);
+    }
+
+    /**
+     * 按文件大小分割文件
+     * @param string $sourceFile 源文件路径
+     * @param string $targetDir  目标文件夹路径
+     * @param int    $partSize   每个分割文件的大小，单位MB
+     * @param string $prefix     分割文件的前缀名
+     * @return bool 成功返回true，失败返回false
+     */
+    protected function splitFileBySize($sourceFile, $targetDir, $partSize, $prefix = 'part_')
+    {
+        // 检查源文件是否存在
+        if (!is_file($sourceFile)) {
+            trigger_error("Source file not found: " . $sourceFile, E_USER_WARNING);
+            return false;
+        }
+
+        // 检查目标目录是否存在，不存在则尝试创建
+        if (!is_dir($targetDir)) {
+            if (!mkdir($targetDir, 0777, true)) {
+                trigger_error("Failed to create target directory: " . $targetDir, E_USER_WARNING);
+                return false;
+            }
+        }
+
+        // 计算文件总大小和需要分割的数量
+        $fileSize = filesize($sourceFile);
+        $partSizeBytes = $partSize * 1024 * 1024; // 将MB转换为字节
+        $partCount = ceil($fileSize / $partSizeBytes);
+
+        // 以二进制只读模式打开源文件
+        $sourceHandle = fopen($sourceFile, 'rb');
+        if (!$sourceHandle) {
+            trigger_error("Failed to open source file: " . $sourceFile, E_USER_WARNING);
+            return false;
+        }
+
+        // 循环读取并创建分割文件
+        for ($i = 0; $i < $partCount; $i++) {
+            // 生成目标文件路径
+            $targetFile = $targetDir . '/' . $prefix . ($i + 1) . '.part';
+
+            // 以二进制写入模式打开目标文件
+            $targetHandle = fopen($targetFile, 'wb');
+            if (!$targetHandle) {
+                fclose($sourceHandle);
+                trigger_error("Failed to create part file: " . $targetFile, E_USER_WARNING);
+                return false;
+            }
+
+            // 计算本次需要读取的字节数（防止超出文件末尾）
+            $bytesToRead = min($partSizeBytes, $fileSize - ($i * $partSizeBytes));
+
+            // 从源文件读取指定大小的数据
+            $buffer = fread($sourceHandle, $bytesToRead);
+            if ($buffer === false) {
+                fclose($sourceHandle);
+                fclose($targetHandle);
+                trigger_error("Failed to read from source file", E_USER_WARNING);
+                return false;
+            }
+
+            // 将数据写入分割文件
+            if (fwrite($targetHandle, $buffer) === false) {
+                fclose($sourceHandle);
+                fclose($targetHandle);
+                trigger_error("Failed to write to part file: " . $targetFile, E_USER_WARNING);
+                return false;
+            }
+
+            // 关闭当前分割文件的句柄
+            fclose($targetHandle);
+        }
+
+        // 关闭源文件句柄
+        fclose($sourceHandle);
+
+        return true;
     }
 }
