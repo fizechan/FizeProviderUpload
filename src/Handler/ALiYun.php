@@ -47,18 +47,14 @@ class ALiYun extends UploadAbstract implements UploadHandler
 
     /**
      * 单文件上传
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $name     文件域表单名
-     * @param string|null $type     指定类型
-     * @param string|null $file_key 文件路径标识
+     * @param string      $name 文件域表单名
+     * @param string|null $key  文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function upload(string $name, string $type = null, string $file_key = null): array
+    public function upload(string $name, ?string $key = null): array
     {
         $uploadFile = $this->getUploadedFile($name);
-        return $this->handleUpload($uploadFile, $type, $file_key);
+        return $this->handleUpload($uploadFile, $key);
     }
 
     /**
@@ -516,67 +512,66 @@ class ALiYun extends UploadAbstract implements UploadHandler
 
     /**
      * 处理上传文件
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
      * @param UploadedFile $uploadFile 已上传的文件
-     * @param string|null  $type       指定类型
-     * @param string|null  $file_key   文件路径标识
-     * @return array
+     * @param string|null  $key        文件路径标识
+     * @return array 返回保存文件的相关信息
      */
-    protected function handleUpload(UploadedFile $uploadFile, string $type = null, string $file_key = null): array
+    protected function handleUpload(UploadedFile $uploadFile, string $key = null): array
     {
-        if (empty($uploadFile)) {
-            throw new FileException('没有找到要上传的文件');
+        $origName = $uploadFile->getClientFilename();
+        if (is_null($origName)) {
+            throw new FileException('', '文件错误！');
         }
-
-        $extension = $uploadFile->getOriginalExtension();
+        $mime = $uploadFile->getClientMediaType();
+        if (is_null($mime)) {
+            throw new FileException($origName, '无法识别文件！');
+        }
+        $extension = MIME::getExtensionByMime($mime);
         if (empty($extension)) {
-            $fso = new File($uploadFile->getRealPath());
-            $mime = $fso->getMime();
-            $extension = MIME::getExtensionByMime($mime);
-            if (empty($extension)) {
-                throw new FileException('禁止上传无后缀名的文件');
+            throw new FileException($origName, '禁止上传无后缀名的文件');
+        }
+        $this->checkExtension($extension);
+
+        $size = $uploadFile->getSize();
+        $tmpNmae = $uploadFile->getTmpName();
+        $sha1 = hash_file('sha1', $tmpNmae);
+
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension);
+        if (is_file($targetPath)) {
+            if ($this->replace) {
+                unlink($targetPath);
+            } else {
+                throw new FileException($targetPath, '文件已存在！');
             }
         }
-        if (!in_array($extension, explode(',', $this->providerCfg['extensions']))) {
-            throw new FileException("禁止上传后缀名为{$extension}的文件");
-        }
+        $this->ossClient->uploadFile($this->cfg['bucket'], $key, $tmpNmae);
+        unset($uploadFile);
+        unlink($tmpNmae);
 
-        $originalName = $uploadFile->getOriginalName();
+        [$imagewidth, $imageheight] = $this->imageResize($targetPath, $extension);
 
-        $save_name = uniqid() . '.' . $extension;
-        $save_file = $this->tempDir . '/' . $save_name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
-        $saveFile = new File($save_file, 'w');
-        $saveFile->fwrite(file_get_contents($uploadFile->getPathname()));
-        unset($saveFile);
-        [$imagewidth, $imageheight] = $this->imageResize($save_file, $extension);
-        $saveFile = new File($save_file);
-
-        if (is_null($file_key)) {
-            $sdir = $this->getSaveDir($type);
-            $file_key = $sdir . '/' . $save_name;
-        }
-        $path = $file_key;
-        $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $file_key;
-
-        $this->ossClient->uploadFile($this->cfg['bucket'], $file_key, $save_file);
-
+        $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
+        $url = $this->cfg['domain'] . $path;
         $data = [
-            'file_key'      => $file_key,
-            'original_name' => $originalName,
-            'url'           => $url,
-            'path'          => $path,
-            'extension'     => $extension,
-            'image_width'   => $imagewidth,
-            'image_height'  => $imageheight,
-            'file_size'     => $saveFile->getSize(),
-            'mime_type'     => $saveFile->getMime(),
-            'sha1'          => hash_file('sha1', $save_file),
-            'extend'        => []
+            'key'       => $key,                            // 文件路径标识
+            'name'      => $name,                           // 保存文件名
+            'path'      => $path,                           // WEB路径
+            'url'       => $url,                            // 完整URL
+            'size'      => $size,                           // 文件大小
+            'mime'      => $mime,                           // MIME类型
+            'extension' => $extension,                      // 后缀名
+            'sha1'      => $sha1,                           // 文件SHA1
+
+            'dir'       => $dir,         // 生成路径
+            'full_path' => $targetPath,  // 本机完整路径
+            'orig_name' => $origName,    // 原文件名
+            'tmp_name'  => $tmpNmae,     // 上传临时文件路径
+
+            'extend' => [
+                'image_width'  => $imagewidth,
+                'image_height' => $imageheight,
+            ]
         ];
-        unlink($save_file);
         return $data;
     }
 }

@@ -8,8 +8,6 @@ use Fize\Exception\FileException;
 use Fize\IO\File;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
-use fuli\commons\third\qiNiu\ResumeUploaderV1;
-use fuli\commons\third\qiNiu\ResumeUploaderV2;
 use Qiniu\Auth;
 use Qiniu\Storage\BucketManager;
 use Qiniu\Storage\UploadManager;
@@ -40,15 +38,11 @@ class QiNiu extends UploadAbstract implements UploadHandler
 
     /**
      * 单文件上传
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $name     文件域表单名
-     * @param string|null $type     指定类型
-     * @param string|null $file_key 文件路径标识
+     * @param string      $name 文件域表单名
+     * @param string|null $key  文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function upload(string $name, string $type = null, string $file_key = null): array
+    public function upload(string $name, ?string $key = null): array
     {
         $uploadFile = Request::file($name);
         return $this->handleUpload($uploadFile, $type, $file_key);

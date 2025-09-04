@@ -523,6 +523,7 @@ class Local extends UploadAbstract implements UploadHandler
             }
         }
         $uploadFile->moveTo($targetPath);
+        $sha1 = hash_file('sha1', $targetPath);
 
         [$imagewidth, $imageheight] = $this->imageResize($targetPath, $extension);
 
@@ -536,7 +537,7 @@ class Local extends UploadAbstract implements UploadHandler
             'size'      => $size,                           // 文件大小
             'mime'      => $mime,                           // MIME类型
             'extension' => $extension,                      // 后缀名
-            'sha1'      => hash_file('sha1', $targetPath),  // 文件SHA1
+            'sha1'      => $sha1,                           // 文件SHA1
 
             'dir'       => $dir,         // 生成路径
             'full_path' => $targetPath,  // 本机完整路径
