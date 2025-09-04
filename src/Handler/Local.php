@@ -27,9 +27,9 @@ class Local extends UploadAbstract implements UploadHandler
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null)
     {
         $defaultCfg = [
-            'domain'   => null,                                   //上传时指定文件URL主机域名。为null表示直接获取当前域名
+            'domain'   => null,                                   // 上传时指定文件URL主机域名。为null表示直接获取当前域名
             'rootPath' => '.',                                    // 根目录
-            'saveDir'  => '/uploads',                             //上传路径
+            'saveDir'  => '/uploads',                             // 上传路径
             'tempDir'  => '/temp',                                // 临时文件路径
 
             'multiple'                            => false,                                 // 是否支持批量上传
@@ -409,7 +409,7 @@ class Local extends UploadAbstract implements UploadHandler
     /**
      * 大文件分片上传
      * @param string      $name      文件域表单名
-     * @param int         $blobIndex 当前分片下标，建议指定该参数。
+     * @param int         $blobIndex 当前分片下标。-1表示初始化，-2表示完成上传。
      * @param int|null    $blobCount 分片总数量，建议指定该参数。
      * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
@@ -417,6 +417,22 @@ class Local extends UploadAbstract implements UploadHandler
      */
     public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $extension = null, ?string $uuid = null): array
     {
+        // 特殊值-1：初始化
+        if ($blobIndex == -1) {
+            $uuid = $this->uploadLargeInit($blobCount, $uuid);
+            $info = $this->getPartUploadInfo($uuid);
+            return $info;
+        }
+
+        // 特殊值-2：完成上传
+        if ($blobIndex == -2) {
+            if (!$uuid) {
+                throw new RuntimeException('请指定参数uuid。');
+            }
+            $info = $this->uploadLargeComplete($uuid, $extension);
+            return $info;
+        }
+
         // 初始化
         if (is_null($uuid)) {
             $uuid = session_id() . "_upload_" . $name;  // 会话端唯一！
@@ -430,10 +446,7 @@ class Local extends UploadAbstract implements UploadHandler
         $uploadFile = $this->getUploadedFile($name);
         $content = $uploadFile->getStream()->getContents();
         $info = $this->uploadLargePart($uuid, $content, $blobIndex);
-        if (!$info['blobCount']) {
-            throw new RuntimeException('请指定参数blobCount。');
-        }
-        if ($info['blobCount'] > count($info['parts'])) {
+        if (is_null($info['blobCount']) || $info['blobCount'] > count($info['parts'])) {
             return $info;
         }
 
@@ -452,6 +465,7 @@ class Local extends UploadAbstract implements UploadHandler
      * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return array
+     * @todo 本机不需要这么麻烦，直接拼接。
      */
     public function uploadParts(array $parts, ?string $extension = null, ?string $uuid = null): array
     {
