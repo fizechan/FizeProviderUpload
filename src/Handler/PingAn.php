@@ -11,6 +11,7 @@ use Fize\Provider\Upload\UploadHandler;
 
 /**
  * 平安云OBS
+ * @deprecated 平安云OBS已被废弃，建议使用其他云存储服务
  */
 class PingAn extends UploadAbstract implements UploadHandler
 {
