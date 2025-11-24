@@ -9,17 +9,13 @@ use Fize\IO\MIME;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
 use OSS\OssClient;
+use RuntimeException;
 
 /**
  * 阿里云OSS
  */
 class ALiYun extends UploadAbstract implements UploadHandler
 {
-
-    /**
-     * @var string 记录上传临时信息所用的文件名前缀
-     */
-    protected $tempPre = 'aliyun_';
 
     /**
      * @var OssClient OSS对象
@@ -34,14 +30,9 @@ class ALiYun extends UploadAbstract implements UploadHandler
      */
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null)
     {
-        $this->cfg = array_merge(Config::get('third.ALiYun.upload'), $cfg);
-        $this->providerCfg = array_merge(Config::get('provider.upload'), $providerCfg);
-
-        if (is_null($tempDir)) {
-            $tempDir = Config::get('filesystem.disks.temps.root');
-        }
-        $this->tempDir = $tempDir;
-
+        $defaultCfg = [
+        ];
+        $this->cfg = array_merge($defaultCfg, $cfg);
         $this->ossClient = new OssClient($this->cfg['accessKeyId'], $this->cfg['accessKeySecret'], $this->cfg['endpoint']);
     }
 
@@ -59,84 +50,82 @@ class ALiYun extends UploadAbstract implements UploadHandler
 
     /**
      * 多文件上传
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $name      文件域表单名
-     * @param string|null $type      指定类型
-     * @param array|null  $file_keys 文件路径标识
+     * @param string     $name 文件域表单名
+     * @param array|null $keys 文件路径标识
      * @return array 返回每个保存文件的相关信息组成的数组
      */
-    public function uploads(string $name, string $type = null, array $file_keys = null): array
+    public function uploads(string $name, ?array $keys = null): array
     {
         $uploadFiles = $this->getUploadedFiles($name);
         $infos = [];
         foreach ($uploadFiles as $index => $file) {
-            $file_key = $file_keys[$index] ?? null;
-            $infos[] = $this->handleUpload($file, $type, $file_key);
+            $key = $keys[$index] ?? null;
+            $infos[] = $this->handleUpload($file, $key);
         }
         return $infos;
     }
 
     /**
      * 上传本地文件
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $file_path 服务器端文件路径
-     * @param string|null $type      指定类型
-     * @param string|null $file_key  文件路径标识
+     * @param string      $filePath 服务器端文件路径
+     * @param string|null $key      文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function uploadFile(string $file_path, string $type = null, string $file_key = null): array
+    public function uploadFile(string $filePath, ?string $key = null): array
     {
-        $file = new File($file_path);
-        $extension = $file->getExtension();
-        [$imagewidth, $imageheight] = $this->getImageSize($file_path, $extension);  // 文件直传故不进行图片压缩
+        $origName = basename($filePath);
+        $origPath = realpath($filePath);
+        $size = filesize($filePath);
+        $orig_file = new File($filePath);
+        $extension = strtolower($orig_file->getExtension());
+        $mime = $orig_file->getMime();
+        unset($orig_file);
+        $this->checkExtension($extension);
 
-        if (is_null($file_key)) {
+        if (is_null($key)) {
             if ($extension) {
-                $save_name = uniqid() . '.' . $extension;
+                $name = uniqid() . '.' . $extension;
             } else {
-                $save_name = uniqid();
+                $name = uniqid();
             }
-            $sdir = $this->getSaveDir($type);
-            $file_key = $sdir . '/' . $save_name;
+            $sdir = $this->getSaveDir();
+            $key = $sdir . '/' . $name;
         }
-        $path = $file_key;
+        $path = $key;
         $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $file_key;
+        $url = $domain . '/' . $key;
+        $sha1 = hash_file('sha1', $filePath);
+        $name = basename($key);
+        $dir = dirname($key);
 
-        $this->ossClient->uploadFile($this->cfg['bucket'], $file_key, $file_path);
+        $this->ossClient->uploadFile($this->cfg['bucket'], $key, $filePath);
 
         $data = [
-            'original_name' => basename($file_path),
-            'url'           => $url,
-            'path'          => $path,
-            'extension'     => $extension,
-            'image_width'   => $imagewidth,
-            'image_height'  => $imageheight,
-            'file_size'     => $file->getSize(),
-            'mime_type'     => $file->getMime(),
-            'sha1'          => hash_file('sha1', $file_path),
-            'extend'        => []
+            'key'       => $key,
+            'name'      => $name,
+            'path'      => $path,
+            'url'       => $url,
+            'size'      => $size,
+            'mime'      => $mime,
+            'extension' => $extension,
+            'sha1'      => $sha1,
+
+            'dir'       => $dir,
+            'orig_name' => $origName,
+            'orig_path' => $origPath,  // 原文件路径
         ];
         return $data;
     }
 
     /**
      * 上传base64串生成文件并保存
-     *
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $base64_centent base64串
-     * @param string|null $type           指定类型
-     * @param string|null $file_key       文件路径标识
+     * @param string      $base64Centent base64串
+     * @param string|null $key           文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function uploadBase64(string $base64_centent, string $type = null, string $file_key = null): array
+    public function uploadBase64(string $base64Centent, ?string $key = null): array
     {
-        if (!preg_match('/^(data:\s*(\w+\/\w+);base64,)/', $base64_centent, $matches)) {
+        if (!preg_match('/^(data:\s*(\w+\/\w+);base64,)/', $base64Centent, $matches)) {
             throw new FileException('没有找到要上传的文件');
         }
 
@@ -146,10 +135,10 @@ class ALiYun extends UploadAbstract implements UploadHandler
             throw new FileException('无法识别上传的文件后缀名');
         }
 
-        $save_name = uniqid() . '.' . $extension;
-        $save_file = $this->tempDir . DIRECTORY_SEPARATOR . $save_name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
+        $name = uniqid() . '.' . $extension;
+        $save_file = $this->cfg['tempDir'] . DIRECTORY_SEPARATOR . $name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
         $fso = new File($save_file, 'w');
-        $result = $fso->fwrite(base64_decode(str_replace($matches[1], '', $base64_centent)));
+        $result = $fso->fwrite(base64_decode(str_replace($matches[1], '', $base64Centent)));
         $fso->clearstatcache();
         $size = $fso->getSize();
 
@@ -157,28 +146,25 @@ class ALiYun extends UploadAbstract implements UploadHandler
             throw new FileException('上传失败');
         }
 
-        [$imagewidth, $imageheight] = $this->imageResize($save_file, $extension);
-
-        if (is_null($file_key)) {
-            $sdir = $this->getSaveDir($type);
-            $file_key = $sdir . '/' . $save_name;
+        if (is_null($key)) {
+            $sdir = $this->getSaveDir();
+            $key = $sdir . '/' . $name;
         }
-        $path = $file_key;
+        $path = $key;
         $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $file_key;
+        $url = $domain . '/' . $key;
 
-        $this->ossClient->uploadFile($this->cfg['bucket'], $file_key, $save_file);
-
+        $this->ossClient->uploadFile($this->cfg['bucket'], $key, $save_file);
+        $sha1 = hash_file('sha1', $save_file);
         $data = [
-            'url'          => $url,
-            'path'         => $path,
-            'extension'    => $extension,
-            'image_width'  => $imagewidth,
-            'image_height' => $imageheight,
-            'file_size'    => $size,
-            'mime_type'    => $mime,
-            'sha1'         => hash_file('sha1', $save_file),
-            'extend'       => []
+            'key'       => $key,
+            'name'      => $name,
+            'path'      => $path,
+            'url'       => $url,
+            'size'      => $size,
+            'mime'      => $mime,
+            'extension' => $extension,
+            'sha1'      => $sha1,
         ];
         unlink($save_file);
         return $data;
@@ -186,28 +172,20 @@ class ALiYun extends UploadAbstract implements UploadHandler
 
     /**
      * 上传远程文件
-     *
-     * 参数 `$extension`：不指定则根据URL、MIME进行猜测
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param string      $url       URL
-     * @param string|null $extension 后缀名
-     * @param string|null $type      指定类型
-     * @param string|null $file_key  文件路径标识
+     * @param string      $url URL
+     * @param string|null $key 文件路径标识
      * @return array 返回保存文件的相关信息
      */
-    public function uploadRemote(string $url, string $extension = null, string $type = null, string $file_key = null): array
+    public function uploadRemote(string $url, ?string $key = null): array
     {
-        $original_url = $url;
-        if (is_null($extension)) {
-            $extension = pathinfo($original_url, PATHINFO_EXTENSION);
-        }
+        $origUrl = $url;
+        $extension = pathinfo($origUrl, PATHINFO_EXTENSION);
         if ($extension) {
             $save_name = uniqid() . '.' . $extension;
         } else {
             $save_name = uniqid();
         }
-        $save_file = $this->tempDir . '/' . $save_name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
+        $save_file = $this->cfg['tempDir'] . '/' . $save_name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
 
         $content = file_get_contents($url);
         if ($content === false) {
@@ -219,41 +197,49 @@ class ALiYun extends UploadAbstract implements UploadHandler
         if ($result === false) {
             throw new FileException('上传失败');
         }
-        $data = $this->uploadFile($save_file, $type, $file_key);
+        $data = $this->uploadFile($save_file, $key);
         unlink($save_file);  // 已上传到OSS，删除本地文件
-        unset($data['original_name']);
-        $data['original_url'] = $original_url;
+        unset($data['orig_name']);
+        $data['orig_url'] = $origUrl;
         return $data;
     }
 
     /**
      * 分块上传：初始化
-     * @param string|null $file_key 文件路径标识，不指定则自动生成
-     * @param string|null $type     指定类型
-     * @return string 返回文件路径标识
+     * @param int|null    $blobCount 分片总数量，建议指定该参数。
+     * @param string|null $uuid      唯一识别码，不指定则自动生成。
+     * @return string 唯一识别码，用于后续的分块上传。
      */
-    public function uploadLargeInit(string $file_key = null, string $type = null): string
+    public function uploadLargeInit(?int $blobCount = null, ?string $uuid = null): string
     {
-        if (is_null($file_key)) {
-            $save_name = uniqid();
-            $sdir = $this->getSaveDir($type);
-            $file_key = $sdir . '/' . $save_name;
+        if (is_null($uuid)) {
+            $uuid = uniqid();
         }
-
-        $uploadId = $this->ossClient->initiateMultipartUpload($this->cfg['bucket'], $file_key);
-        $this->savePartUploadInfo($file_key, ['uploadId' => $uploadId, 'tempName' => uniqid()]);
-
-        return $file_key;
+        $info = $this->getPartUploadInfo($uuid);
+        if ($info) {  // 存在旧的分片信息则删除重新初始化。
+            $this->ossClient->abortMultipartUpload($this->cfg['bucket'], $uuid, $info['uploadId']);
+            $this->deletPartUploadInfo($uuid);
+        }
+        $uploadId = $this->ossClient->initiateMultipartUpload($this->cfg['bucket'], $uuid);
+        $info = [
+            'uuid'      => $uuid,
+            'blobCount' => $blobCount,
+            'uploadId'  => $uploadId,
+        ];
+        $this->savePartUploadInfo($uuid, $info);
+        return $uuid;
     }
 
     /**
      * 分块上传：上传块
-     * @param string $file_key 文件路径标识
-     * @param string $content  块内容
+     * @param string   $uuid      唯一识别码
+     * @param string   $content   块内容
+     * @param int|null $blobIndex 当前分片下标，建议指定该参数。
+     * @return array 返回保存文件的相关信息
      */
-    public function uploadLargePart(string $file_key, string $content)
+    public function uploadLargePart(string $uuid, string $content, ?int $blobIndex = null): array
     {
-        $info = $this->getPartUploadInfo($file_key);
+        $info = $this->getPartUploadInfo($uuid);
         $this->assertHasKey($info, 'uploadId');
         if (isset($info['ETags'])) {
             $partNumber = (end($info['ETags']))['PartNumber'] + 1;
@@ -261,18 +247,18 @@ class ALiYun extends UploadAbstract implements UploadHandler
             $partNumber = 1;
         }
 
-        $temp_file = $this->tempDir . '/' . $info['tempName'];
+        $tempFile = $this->cfg['tempDir'] . '/' . $info['tempName'];
         if ($partNumber == 1) {
             $org_size = 0;
         } else {
-            $org_size = filesize($temp_file);
+            $org_size = filesize($tempFile);
         }
-        file_put_contents($temp_file, $content, FILE_APPEND);
-        clearstatcache(true, $temp_file);
-        $new_size = filesize($temp_file);
+        file_put_contents($tempFile, $content, FILE_APPEND);
+        clearstatcache(true, $tempFile);
+        $new_size = filesize($tempFile);
 
         $upOptions = [
-            OssClient::OSS_FILE_UPLOAD => $temp_file,
+            OssClient::OSS_FILE_UPLOAD => $tempFile,
             OssClient::OSS_PART_NUM    => $partNumber,
             OssClient::OSS_SEEK_TO     => $org_size,
             OssClient::OSS_LENGTH      => $new_size - $org_size,
@@ -280,78 +266,123 @@ class ALiYun extends UploadAbstract implements UploadHandler
             OssClient::OSS_CONTENT_MD5 => base64_encode(md5($content, true))
 
         ];
-        $eTag = $this->ossClient->uploadPart($this->cfg['bucket'], $file_key, $info['uploadId'], $upOptions);
+        $eTag = $this->ossClient->uploadPart($this->cfg['bucket'], $uuid, $info['uploadId'], $upOptions);
         $blockStatus = ['ETag' => $eTag, 'PartNumber' => $partNumber];
         $etags = $info['ETags'] ?? [];
         $etags[] = $blockStatus;
-        $this->savePartUploadInfo($file_key, ['ETags' => $etags]);
+        $this->savePartUploadInfo($uuid, ['ETags' => $etags]);
+        $info = $this->getPartUploadInfo($uuid);
+        return $info;
     }
 
     /**
-     * 分块上传：结束并生成文件
-     * @param string      $file_key 文件路径标识
-     * @param string|null $fname    原文件名
-     * @param string|null $mimeType 指定Mime
+     * 分块上传：完成上传
+     * @param string      $uuid      唯一识别码
+     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
      * @return array 返回保存文件的相关信息
      */
-    public function uploadLargeComplete(string $file_key, string $fname = null, string $mimeType = null): array
+    public function uploadLargeComplete(string $uuid, ?string $extension = null): array
     {
-        $info = $this->getPartUploadInfo($file_key);
+        $info = $this->getPartUploadInfo($uuid);
         $this->assertHasKey($info, 'uploadId');
         $this->assertHasKey($info, 'ETags');
 
-        $this->ossClient->completeMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId'], $info['ETags']);
+        $this->ossClient->completeMultipartUpload($this->cfg['bucket'], $uuid, $info['uploadId'], $info['ETags']);
 
-        $temp_file = $this->tempDir . '/' . $info['tempName'];
+        $temp_file = $this->cfg['tempDir'] . '/' . $info['tempName'];
+        $key = $info['key'];
+        $name = basename($temp_file);
         $tempFile = new File($temp_file);
-        $extension = pathinfo($file_key, PATHINFO_EXTENSION);
-        if (empty($extension) && $fname) {
-            $extension = pathinfo($fname, PATHINFO_EXTENSION);
-        }
+        $extension = pathinfo($key, PATHINFO_EXTENSION);
         if (empty($extension)) {
             $extension = $tempFile->getExtension();
         }
 
-        $path = $file_key;
+        $path = $key;
         $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $file_key;
-        [$imagewidth, $imageheight] = $this->imageResize($temp_file, $extension);
+        $url = $domain . '/' . $key;
 
-        $file_size = $tempFile->getSize();
-        $file_mime = $tempFile->getMime();
+        $size = $tempFile->getSize();
+        $mime = $tempFile->getMime();
         $sha1 = hash_file('sha1', $temp_file);
 
         unlink($temp_file);
-        $this->deletPartUploadInfo($file_key);
+        $this->deletPartUploadInfo($uuid);
 
         return [
-            'url'          => $url,
-            'path'         => $path,
-            'extension'    => $extension,
-            'image_width'  => $imagewidth,
-            'image_height' => $imageheight,
-            'file_size'    => $file_size,
-            'mime_type'    => $file_mime,
-            'storage'      => 'ALiYun',
-            'sha1'         => $sha1,
-            'extend'       => [
-                'fname' => $fname
-            ]
+            'key'       => $key,                            // 文件路径标识
+            'name'      => $name,                           // 保存文件名
+            'path'      => $path,                           // WEB路径
+            'url'       => $url,                            // 完整URL
+            'size'      => $size,                           // 文件大小
+            'mime'      => $mime,                           // MIME类型
+            'extension' => $extension,                      // 后缀名
+            'sha1'      => $sha1,                           // 文件SHA1
+            'uuid'      => $uuid,
         ];
     }
 
     /**
-     * 终止上传
-     * @param string $file_key 文件路径标识
+     * 分块上传：终止上传
+     * @param string $uuid 唯一识别码
      */
-    public function uploadLargeAbort(string $file_key)
+    public function uploadLargeAbort(string $uuid)
     {
-        $info = $this->getPartUploadInfo($file_key);
+        $info = $this->getPartUploadInfo($uuid);
         $this->assertHasKey($info, 'uploadId');
-        $this->ossClient->abortMultipartUpload($this->cfg['bucket'], $file_key, $info['uploadId']);
-        $temp_file = $this->tempDir . '/' . $info['tempName'];
+        $this->ossClient->abortMultipartUpload($this->cfg['bucket'], $info['key'], $info['uploadId']);
+        $temp_file = $this->cfg['tempDir'] . '/' . $info['tempName'];
         unlink($temp_file);
-        $this->deletPartUploadInfo($file_key);
+        $this->deletPartUploadInfo($uuid);
+    }
+
+    /**
+     * 大文件分片上传
+     * @param string      $name      文件域表单名
+     * @param int         $blobIndex 当前分片下标。-1表示初始化，-2表示完成上传。
+     * @param int|null    $blobCount 分片总数量，建议指定该参数。
+     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $uuid      唯一识别码，不指定则自动生成。
+     * @return array
+     */
+    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $extension = null, ?string $uuid = null): array
+    {
+        // 特殊值-1：初始化
+        if ($blobIndex == -1) {
+            $uuid = $this->uploadLargeInit($blobCount, $uuid);
+            $info = $this->getPartUploadInfo($uuid);
+            return $info;
+        }
+
+        // 特殊值-2：完成上传
+        if ($blobIndex == -2) {
+            if (!$uuid) {
+                throw new RuntimeException('请指定参数uuid。');
+            }
+            $info = $this->uploadLargeComplete($uuid, $extension);
+            return $info;
+        }
+
+        // 初始化
+        if (is_null($uuid)) {
+            $uuid = session_id() . "_upload_" . $name;  // 会话端唯一！
+        }
+        $info = $this->getPartUploadInfo($uuid);
+        if (!$info) {
+            $this->uploadLargeInit($blobCount, $uuid);
+        }
+
+        // 上传块
+        $uploadFile = $this->getUploadedFile($name);
+        $content = $uploadFile->getStream()->getContents();
+        $info = $this->uploadLargePart($uuid, $content, $blobIndex);
+        if (is_null($info['blobCount']) || $info['blobCount'] > count($info['parts'])) {
+            return $info;
+        }
+
+        // 完成上传
+        $info = $this->uploadLargeComplete($uuid, $extension);
+        return $info;
     }
 
     /**
@@ -368,7 +399,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
      * @param string|null $type       指定类型。当参数$file_key参数 $type 无效。
      * @return array
      */
-    public function uploadLarge(string $name, int $blob_index, int $blob_count, string $file_key = null, string $extension = null, string $type = null): array
+    public function uploadLarge1(string $name, int $blob_index, int $blob_count, string $file_key = null, string $extension = null, string $type = null): array
     {
         if (empty($name)) {
             throw new FileException('请指定要上传的文件。');
@@ -438,6 +469,24 @@ class ALiYun extends UploadAbstract implements UploadHandler
 
     /**
      * 上传多个分块并合并成文件
+     * @param array       $parts     分块数组
+     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $uuid      唯一识别码，不指定则自动生成。
+     * @return array
+     */
+    public function uploadParts(array $parts, ?string $extension = null, ?string $uuid = null): array
+    {
+        $blobCount = count($parts);
+        $uuid = $this->uploadLargeInit($blobCount, $uuid);
+        foreach ($parts as $blobIndex => $content) {
+            $this->uploadLargePart($uuid, $content, $blobIndex);
+        }
+        $info = $this->uploadLargeComplete($uuid, $extension);
+        return $info;
+    }
+
+    /**
+     * 上传多个分块并合并成文件
      *
      * 参数 `$extension`：不指定则根据URL、MIME进行猜测
      * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
@@ -448,7 +497,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
      * @param string|null $file_key  文件路径标识
      * @return array
      */
-    public function uploadParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array
+    public function uploadParts1(array $parts, string $extension = null, string $type = null, string $file_key = null): array
     {
         if (is_null($file_key)) {
             if ($extension) {
@@ -460,7 +509,7 @@ class ALiYun extends UploadAbstract implements UploadHandler
             $file_key = $sdir . '/' . $save_name;
         }
         $save_name = uniqid() . '.' . $extension;
-        $temp_file = $this->tempDir . '/' . $save_name;
+        $temp_file = $this->cfg['tempDir'] . '/' . $save_name;
         foreach ($parts as $part) {
             file_put_contents($temp_file, $part, FILE_APPEND);
         }
@@ -533,24 +582,13 @@ class ALiYun extends UploadAbstract implements UploadHandler
         $this->checkExtension($extension);
 
         $size = $uploadFile->getSize();
-        $tmpNmae = $uploadFile->getTmpName();
-        $sha1 = hash_file('sha1', $tmpNmae);
-
-        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension);
-        if (is_file($targetPath)) {
-            if ($this->replace) {
-                unlink($targetPath);
-            } else {
-                throw new FileException($targetPath, '文件已存在！');
-            }
-        }
-        $this->ossClient->uploadFile($this->cfg['bucket'], $key, $tmpNmae);
-        unset($uploadFile);
-        unlink($tmpNmae);
-
-        [$imagewidth, $imageheight] = $this->imageResize($targetPath, $extension);
-
-        $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
+        $tmpName = $uploadFile->getTmpName();
+        $this->ossClient->uploadFile($this->cfg['bucket'], $key, $tmpName);
+        $sha1 = hash_file('sha1', $tmpName);
+        $name = basename($key);
+        $dir = dirname($key);
+        unlink($tmpName);
+        $path = str_replace(realpath($this->cfg['rootPath']), '', $key);
         $url = $this->cfg['domain'] . $path;
         $data = [
             'key'       => $key,                            // 文件路径标识
@@ -563,14 +601,8 @@ class ALiYun extends UploadAbstract implements UploadHandler
             'sha1'      => $sha1,                           // 文件SHA1
 
             'dir'       => $dir,         // 生成路径
-            'full_path' => $targetPath,  // 本机完整路径
             'orig_name' => $origName,    // 原文件名
-            'tmp_name'  => $tmpNmae,     // 上传临时文件路径
-
-            'extend' => [
-                'image_width'  => $imagewidth,
-                'image_height' => $imageheight,
-            ]
+            'tmp_name'  => $tmpName,     // 上传临时文件路径
         ];
         return $data;
     }
