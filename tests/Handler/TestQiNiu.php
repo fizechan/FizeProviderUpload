@@ -4,8 +4,6 @@ namespace Tests\Handler;
 
 use Fize\Provider\Upload\Handler\QiNiu;
 use PHPUnit\Framework\TestCase;
-use think\File;
-use think\facade\App;
 
 class TestQiNiu extends TestCase
 {

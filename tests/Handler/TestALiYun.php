@@ -4,9 +4,6 @@ namespace Tests\Handler;
 
 use Fize\Provider\Upload\Handler\ALiYun;
 use PHPUnit\Framework\TestCase;
-use think\facade\App;
-use think\facade\Config;
-use think\Request;
 
 class TestALiYun extends TestCase
 {
