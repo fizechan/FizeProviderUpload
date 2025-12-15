@@ -77,6 +77,7 @@ interface UploadHandler
 
     /**
      * 分块上传：初始化
+     * @todo 考虑添加参数$key
      * @param int|null    $blobCount 分片总数量，建议指定该参数。
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return string 唯一识别码，用于后续的分块上传。
@@ -94,6 +95,7 @@ interface UploadHandler
 
     /**
      * 分块上传：完成上传
+     * @todo 考虑添加参数$key
      * @param string      $uuid      唯一识别码
      * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
      * @return array 返回保存文件的相关信息

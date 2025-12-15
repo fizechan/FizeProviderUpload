@@ -20,9 +20,22 @@
 
 ### 本地存储(Local)
 
+
+### 阿里云(ALiYun)
+composer require aliyuncs/oss-sdk-php
+
 ### 百度智能云(BaiDu)
-使用百度智能云时，需先下载SDK，将下载到的文件“BaiduBce.phar”放在文件夹extend中。
+下载SDK，将下载到的文件“BaiduBce.phar”添加到自动加载路径中。
 [SDK下载地址](https://cloud.baidu.com/doc/Developer/index.html?sdk=php)
+```json
+{
+    "autoload": {
+        "files": [
+        "realpath/BaiduBce.phar"
+        ]
+    }
+}
+```
 
 ## TODO
 - 上传图片处理独立出来。
