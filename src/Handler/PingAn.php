@@ -8,6 +8,7 @@ use Fize\IO\File;
 use Fize\Third\PingAn\Api\OBS;
 use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
+use RuntimeException;
 
 /**
  * 平安云OBS
@@ -313,7 +314,7 @@ class PingAn extends UploadAbstract implements UploadHandler
      */
     public function uploadLargeInit(string $file_key = null, string $type = null): string
     {
-        throw new \RuntimeException('暂未实现！');
+        throw new RuntimeException('暂未实现！');
     }
 
     /**
@@ -323,7 +324,7 @@ class PingAn extends UploadAbstract implements UploadHandler
      */
     public function uploadLargePart(string $file_key, string $content)
     {
-        throw new \RuntimeException('暂未实现！');
+        throw new RuntimeException('暂未实现！');
     }
 
     /**
@@ -335,7 +336,7 @@ class PingAn extends UploadAbstract implements UploadHandler
      */
     public function uploadLargeComplete(string $file_key, string $fname = null, string $mimeType = null): array
     {
-        throw new \RuntimeException('暂未实现！');
+        throw new RuntimeException('暂未实现！');
     }
 
     /**
@@ -344,7 +345,7 @@ class PingAn extends UploadAbstract implements UploadHandler
      */
     public function uploadLargeAbort(string $file_key)
     {
-        throw new \RuntimeException('暂未实现！');
+        throw new RuntimeException('暂未实现！');
     }
 
     /**
@@ -461,7 +462,7 @@ class PingAn extends UploadAbstract implements UploadHandler
      */
     public function uploadParts(array $parts, string $extension = null, string $type = null, string $file_key = null): array
     {
-        throw new \RuntimeException('暂未实现！');
+        throw new RuntimeException('暂未实现！');
     }
 
     /**

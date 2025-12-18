@@ -16,6 +16,7 @@
   "require": {
     "php": ">=7.1.0",
     "ext-json": "*",
+    "fize/cache": "*",
     "fize/exception": "^3.2.0",
     "fize/http": "^5.4.0",
     "fize/image": "*",
