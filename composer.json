@@ -19,7 +19,6 @@
     "fize/cache": "*",
     "fize/exception": "^3.2.0",
     "fize/http": "^5.4.0",
-    "fize/image": "*",
     "fize/io": "^9.2.0",
     "fize/web": "*"
   },

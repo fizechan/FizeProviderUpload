@@ -1,6 +1,5 @@
 <?php
 
-
 namespace Fize\Provider\Upload\Handler;
 
 use Fize\Cache\CacheFactory;
@@ -441,7 +440,6 @@ class QiNiu extends UploadAbstract implements UploadHandler
      * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return array
-     * @todo 本机不需要这么麻烦，直接拼接。
      */
     public function uploadParts(array $parts, ?string $extension = null, ?string $uuid = null): array
     {
