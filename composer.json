@@ -37,6 +37,7 @@
     "fize/third-pingan": "^0.2.0",
     "obs/esdk-obs-php": "^3.24.9",
     "phpunit/phpunit": "^9.5.0",
+    "qcloud/cos-sdk-v5": "^2.6.16",
     "qiniu/php-sdk": "^7.14.0"
   }
 }
