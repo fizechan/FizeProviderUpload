@@ -2,7 +2,10 @@
 
 namespace Fize\Provider\Upload\Handler;
 
-class Google
+use Fize\Provider\Upload\UploadAbstract;
+use Fize\Provider\Upload\UploadHandler;
+
+class Google extends UploadAbstract implements UploadHandler
 {
 
 }

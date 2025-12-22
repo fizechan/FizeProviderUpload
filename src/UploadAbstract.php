@@ -7,8 +7,6 @@ use Fize\Codec\Json;
 use Fize\Exception\FileException;
 use Fize\Http\ServerRequestFactory;
 use Fize\Http\UploadedFile;
-use Fize\Image\Image;
-use Fize\IO\Extension;
 use Fize\IO\File;
 
 /**
@@ -19,6 +17,7 @@ abstract class UploadAbstract
 
     /**
      * @var array provider设置
+     * @todo 考虑移除
      */
     protected $providerCfg;
 
@@ -94,54 +93,6 @@ abstract class UploadAbstract
     }
 
     /**
-     * 如果文件是图片则根据配置进行大小调整
-     * @param string      $file      文件名
-     * @param string|null $extension 后缀名
-     * @return array [新宽度，新高度]
-     * @todo 图片处理将在后续版本中进行独立。
-     */
-    protected function imageResize(string $file, ?string $extension): array
-    {
-        if (is_null($extension)) {
-            return [null, null];
-        }
-        $imagewidth = null;
-        $imageheight = null;
-        if (Extension::isImage($extension)) {
-            $imgsize = getimagesize($file);
-            $imagewidth = $imgsize[0] ?? null;
-            $imageheight = $imgsize[1] ?? null;
-            if ($imagewidth > $this->providerCfg['image_max_width'] && filesize($file) > $this->providerCfg['image_max_size']) {
-                $imageheight = (int)round($this->providerCfg['image_max_width'] * $imageheight / $imagewidth);
-                $imagewidth = $this->providerCfg['image_max_width'];
-                Image::scale($file, $imagewidth, $imageheight);
-            }
-        }
-        return [$imagewidth, $imageheight];
-    }
-
-    /**
-     * 如果文件是图片则返回图片宽度、高度
-     * @param string      $file      文件名
-     * @param string|null $extension 后缀名
-     * @return array [宽度，高度]
-     */
-    protected function getImageSize(string $file, ?string $extension): array
-    {
-        if (is_null($extension)) {
-            return [null, null];
-        }
-        $imagewidth = null;
-        $imageheight = null;
-        if (Extension::isImage($extension)) {
-            $imgsize = getimagesize($file);
-            $imagewidth = $imgsize[0] ?? null;
-            $imageheight = $imgsize[1] ?? null;
-        }
-        return [$imagewidth, $imageheight];
-    }
-
-    /**
      * 获取临时信息
      * @param string $uuid 唯一识别码
      * @return array
@@ -197,21 +148,6 @@ abstract class UploadAbstract
         if (!isset($array[$key])) {
             throw new Exception("缺少必要参数：$key");
         }
-    }
-
-    /**
-     * 初始化provider设置
-     * @param array $providerCfg provider设置
-     * @todo 待移除，图片处理将在后续版本中进行独立。
-     */
-    protected function initProviderCfg(array $providerCfg)
-    {
-        $def_config = [
-            'image_resize'    => true,             // 图片大小调整
-            'image_max_width' => 1000,             // 图片宽度超过该值时进行调整
-            'image_max_size'  => 2 * 1024 * 1024,  // 图片文件大小超过该值时进行调整
-        ];
-        $this->providerCfg = array_merge($def_config, $providerCfg);
     }
 
     /**

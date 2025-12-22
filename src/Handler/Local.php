@@ -42,12 +42,6 @@ class Local extends UploadAbstract implements UploadHandler
             $this->cfg['domain'] = Request::domain();
         }
 
-        $defaultProviderCfg = [
-            'image_max_size'  => 102400,                                // 最大图片文件大小，超过该大小才进行缩略
-            'image_max_width' => 1000,                                  // 最大图片宽度，超过该宽度将进行缩放至宽度2048
-        ];
-        $this->providerCfg = array_merge($defaultProviderCfg, $providerCfg);
-
         if (is_null($tempDir)) {
             $tempDir = $this->cfg['tempDir'];
         }
@@ -233,9 +227,6 @@ class Local extends UploadAbstract implements UploadHandler
 
         $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
         $url = $this->cfg['domain'] . $path;
-
-        [$imagewidth, $imageheight] = $this->getImageSize($targetPath, $extension);  // 文件直传故不进行图片压缩
-
         $size = filesize($targetPath);
         $sha1 = hash_file('sha1', $targetPath);
 
@@ -252,11 +243,6 @@ class Local extends UploadAbstract implements UploadHandler
             'dir'       => $dir,
             'full_path' => $targetPath,
             'orig_url'  => $origUrl,
-
-            'extend' => [
-                'image_width'  => $imagewidth,
-                'image_height' => $imageheight,
-            ]
         ];
         return $data;
     }
@@ -264,12 +250,15 @@ class Local extends UploadAbstract implements UploadHandler
     /**
      * 分块上传：初始化
      * @param int|null    $blobCount 分片总数量，建议指定该参数。
+     * @param string|null $key       文件路径标识
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return string 唯一识别码，用于后续的分块上传。
      */
-    public function uploadLargeInit(?int $blobCount = null, ?string $uuid = null): string
+    public function uploadLargeInit(?int $blobCount = null, ?string $key = null, ?string $uuid = null): string
     {
-        if (is_null($uuid)) {
+        if ($key) {
+            $uuid = $key;
+        } elseif (is_null($uuid)) {
             $uuid = uniqid();
         }
         $info = $this->getPartUploadInfo($uuid);
@@ -285,6 +274,7 @@ class Local extends UploadAbstract implements UploadHandler
         }
         $info = [
             'uuid'      => $uuid,
+            'key'       => $key,
             'blobCount' => $blobCount,
             'parts'     => (object)[],
         ];
@@ -327,10 +317,11 @@ class Local extends UploadAbstract implements UploadHandler
     /**
      * 分块上传：完成上传
      * @param string      $uuid      唯一识别码
+     * @param string|null $key       文件路径标识
      * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
      * @return array 返回保存文件的相关信息
      */
-    public function uploadLargeComplete(string $uuid, ?string $extension = null): array
+    public function uploadLargeComplete(string $uuid, ?string $key = null, ?string $extension = null): array
     {
         $info = $this->getPartUploadInfo($uuid);
         self::assertHasKey($info, 'parts');
@@ -340,7 +331,10 @@ class Local extends UploadAbstract implements UploadHandler
             }
         }
 
-        [$key, $dir, $name, $targetPath] = $this->getPathInfo(null, $extension);
+        if (is_null($key)) {
+            $key = $info['key'];
+        }
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension, $uuid);
 
         // 按序合并
         $fso = new File($targetPath, 'a+b');
@@ -520,9 +514,6 @@ class Local extends UploadAbstract implements UploadHandler
         }
         $uploadFile->moveTo($targetPath);
         $sha1 = hash_file('sha1', $targetPath);
-
-        [$imagewidth, $imageheight] = $this->imageResize($targetPath, $extension);
-
         $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
         $url = $this->cfg['domain'] . $path;
         $data = [
@@ -539,11 +530,6 @@ class Local extends UploadAbstract implements UploadHandler
             'full_path' => $targetPath,  // 本机完整路径
             'orig_name' => $origName,    // 原文件名
             'tmp_name'  => $tmpName,     // 上传临时文件路径
-
-            'extend' => [
-                'image_width'  => $imagewidth,
-                'image_height' => $imageheight,
-            ]
         ];
         return $data;
     }
@@ -552,17 +538,21 @@ class Local extends UploadAbstract implements UploadHandler
      * 获取路径相关信息
      * @param string|null $key       文件唯一标识
      * @param string|null $extension 后缀名
+     * @param string|null $uuid      唯一识别码
      * @return array [路径标识, 保存目录, 保存文件名, 保存路径]
      */
-    protected function getPathInfo(string $key = null, string $extension = null): array
+    protected function getPathInfo(string $key = null, string $extension = null, string $uuid = null): array
     {
         if (is_null($key)) {
             $sdir = $this->getSaveDir();
             $dir = $this->cfg['saveDir'] . '/' . $sdir;
+            if (is_null($uuid)) {
+                $uuid = uniqid();
+            }
             if (empty($extension)) {
-                $name = uniqid();
+                $name = $uuid;
             } else {
-                $name = uniqid() . '.' . $extension;
+                $name = $uuid . '.' . $extension;
             }
             $key = $sdir . '/' . $name;
         } else {

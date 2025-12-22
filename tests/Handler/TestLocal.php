@@ -109,8 +109,8 @@ class TestLocal extends TestCase
             'tempDir'  => '/uploads/temp',
         ];
         $uploader = new Local($cfg);
-        $uuid = '68b8f41d6bf72';
-        $info = $uploader->uploadLargePart($uuid, file_get_contents('/Users/sjsj/Downloads/360zip_v1.0.4_split_files/chunk_3.part'));
+        $uuid = '6948e1e7023ce';
+        $info = $uploader->uploadLargePart($uuid, file_get_contents('/Users/sjsj/Downloads/360zip_v1.0.4_split_files/chunk_2.part'), 1);
         var_dump($info);
         self::assertIsArray($info);
     }
@@ -124,8 +124,8 @@ class TestLocal extends TestCase
             'tempDir'  => '/uploads/temp',
         ];
         $uploader = new Local($cfg);
-        $uuid = '68b8f41d6bf72';
-        $info = $uploader->uploadLargeComplete($uuid, 'dmg');
+        $uuid = '6948e1e7023ce';
+        $info = $uploader->uploadLargeComplete($uuid, null, 'dmg');
         var_dump($info);
         self::assertIsArray($info);
     }

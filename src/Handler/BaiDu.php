@@ -45,8 +45,6 @@ class BaiDu extends UploadAbstract implements UploadHandler
             $cfg['domain'] = $bosCFG['endpoint'];
         }
         $this->cfg = $cfg;
-        $this->initProviderCfg($providerCfg);
-
         $this->bosClient = new BosClient($bosCFG);
     }
 

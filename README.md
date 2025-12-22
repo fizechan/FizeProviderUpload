@@ -10,16 +10,20 @@
 ## 除支持本地存储(Local)外，目前已支持以下平台：
 
 - 阿里云(ALiYun)
+- 亚马逊AWS(AWS)
+- 微软Azure(Azure)
 - 百度智能云(BaiDu)
+- 谷歌云(Google)
 - 华为云(HuaWei)
 - 平安云(PingAn)
 - 七牛云(QiNiu)
+- 腾讯云(Tencent)
 
 ## 使用指南
 - 推荐前端使用[Plupload](https://www.plupload.com/)进行文件上传。
 
 ### 本地存储(Local)
-
+直接使用，无需引入额外依赖。
 
 ### 阿里云(ALiYun)
 composer require aliyuncs/oss-sdk-php
