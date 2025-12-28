@@ -4,9 +4,9 @@ namespace Fize\Provider\Upload;
 
 
 /**
- * 文件上传
+ * 文件上传工厂
  */
-class Upload
+class UploadHandlerFactory
 {
 
     /**

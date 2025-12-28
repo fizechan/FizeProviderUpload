@@ -10,7 +10,7 @@ use Fize\Http\UploadedFile;
 use Fize\IO\File;
 
 /**
- * 上传基类
+ * 文件上传基类
  */
 abstract class UploadAbstract
 {
