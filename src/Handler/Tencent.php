@@ -6,15 +6,15 @@ use Fize\Exception\FileException;
 use Fize\Http\UploadedFile;
 use Fize\IO\File;
 use Fize\IO\MIME;
-use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
+use Fize\Provider\Upload\UploadHandlerAbstract;
 use Qcloud\Cos\Client;
 use RuntimeException;
 
 /**
  * 腾讯云COS
  */
-class Tencent extends UploadAbstract implements UploadHandler
+class Tencent extends UploadHandlerAbstract implements UploadHandler
 {
 
     /**

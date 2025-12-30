@@ -6,16 +6,15 @@ use Fize\Exception\FileException;
 use Fize\Http\UploadedFile;
 use Fize\IO\File;
 use Fize\IO\MIME;
-use Fize\Web\Request;
-use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
+use Fize\Provider\Upload\UploadHandlerAbstract;
+use Fize\Web\Request;
 use RuntimeException;
-
 
 /**
  * 本地方式上传文件
  */
-class Local extends UploadAbstract implements UploadHandler
+class Local extends UploadHandlerAbstract implements UploadHandler
 {
 
     /**

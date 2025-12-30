@@ -8,8 +8,8 @@ use Fize\Exception\FileException;
 use Fize\Http\UploadedFile;
 use Fize\IO\File;
 use Fize\IO\MIME;
-use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
+use Fize\Provider\Upload\UploadHandlerAbstract;
 use Qiniu\Auth;
 use Qiniu\Storage\UploadManager;
 use RuntimeException;
@@ -18,7 +18,7 @@ use RuntimeException;
 /**
  * 七牛云OBS
  */
-class QiNiu extends UploadAbstract implements UploadHandler
+class QiNiu extends UploadHandlerAbstract implements UploadHandler
 {
 
     /**

@@ -2,10 +2,10 @@
 
 namespace Fize\Provider\Upload\Handler;
 
-use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
+use Fize\Provider\Upload\UploadHandlerAbstract;
 
-class AWS extends UploadAbstract implements UploadHandler
+class AWS extends UploadHandlerAbstract implements UploadHandler
 {
 
 }

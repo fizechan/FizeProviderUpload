@@ -6,15 +6,15 @@ use Fize\Exception\FileException;
 use Fize\Http\UploadedFile;
 use Fize\IO\File;
 use Fize\IO\MIME;
-use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
+use Fize\Provider\Upload\UploadHandlerAbstract;
 use OSS\OssClient;
 use RuntimeException;
 
 /**
  * 阿里云OSS
  */
-class ALiYun extends UploadAbstract implements UploadHandler
+class ALiYun extends UploadHandlerAbstract implements UploadHandler
 {
 
     /**

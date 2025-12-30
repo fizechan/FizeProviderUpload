@@ -12,7 +12,7 @@ use Fize\IO\File;
 /**
  * 文件上传基类
  */
-abstract class UploadAbstract
+abstract class UploadHandlerAbstract
 {
 
     /**

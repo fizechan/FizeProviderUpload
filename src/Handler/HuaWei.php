@@ -6,15 +6,15 @@ use Fize\Exception\FileException;
 use Fize\Http\UploadedFile;
 use Fize\IO\File;
 use Fize\IO\MIME;
-use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
+use Fize\Provider\Upload\UploadHandlerAbstract;
 use Obs\ObsClient;
 use RuntimeException;
 
 /**
  * 华为云OBS
  */
-class HuaWei extends UploadAbstract implements UploadHandler
+class HuaWei extends UploadHandlerAbstract implements UploadHandler
 {
 
     /**

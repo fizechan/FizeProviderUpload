@@ -10,14 +10,14 @@ use Fize\Exception\FileException;
 use Fize\Http\UploadedFile;
 use Fize\IO\File;
 use Fize\IO\MIME;
-use Fize\Provider\Upload\UploadAbstract;
 use Fize\Provider\Upload\UploadHandler;
+use Fize\Provider\Upload\UploadHandlerAbstract;
 use RuntimeException;
 
 /**
  * 百度智能云BOS
  */
-class BaiDu extends UploadAbstract implements UploadHandler
+class BaiDu extends UploadHandlerAbstract implements UploadHandler
 {
 
     /**
