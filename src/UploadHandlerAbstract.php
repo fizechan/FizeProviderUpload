@@ -17,7 +17,6 @@ abstract class UploadHandlerAbstract
 
     /**
      * @var array provider设置
-     * @todo 考虑移除
      */
     protected $providerCfg;
 
@@ -29,7 +28,7 @@ abstract class UploadHandlerAbstract
     /**
      * @var string 临时文件夹路径
      */
-    protected $tempDirPath;
+    protected $tempDirPath = './temp';
 
     /**
      * @var string 允许上传的文件后缀名
@@ -133,7 +132,7 @@ abstract class UploadHandlerAbstract
      */
     protected function deletPartUploadInfo(string $uuid)
     {
-        $info_file = $this->tempDirPath . '/' . $uuid. '.json';
+        $info_file = $this->tempDirPath . '/' . $uuid . '.json';
         unlink($info_file);
     }
 
@@ -194,5 +193,25 @@ abstract class UploadHandlerAbstract
         if (!in_array($extension, $allowExtensions)) {
             throw new FileException("禁止上传后缀名为{$extension}的文件");
         }
+    }
+
+    /**
+     * 生成key
+     * @param string|null $name      文件名
+     * @param string|null $extension 后缀名
+     * @return string
+     */
+    protected function generateKey(string $name = null, string $extension = null): string
+    {
+        if (is_null($name)) {
+            if ($extension) {
+                $name = uniqid() . '.' . $extension;
+            } else {
+                $name = uniqid();
+            }
+        }
+        $sdir = $this->getSaveDir();
+        $key = $sdir . '/' . $name;
+        return $key;
     }
 }

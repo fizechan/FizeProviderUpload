@@ -468,14 +468,14 @@ class Local extends UploadHandlerAbstract implements UploadHandler
     }
 
     /**
-     * 返回已授权的预览URL
-     * @param string $url     原URL
+     * 返回已授权的URL
+     * @param string $key     文件路径标识
      * @param int    $expires 有效期(秒)，为0表示永久有效
      * @return string
      */
-    public function getAuthorizedUrl(string $url, int $expires = 0): string
+    public function getAuthorizedUrl(string $key, int $expires = 0): string
     {
-        return $url;
+        return $this->cfg['domain'] . $key;
     }
 
     /**

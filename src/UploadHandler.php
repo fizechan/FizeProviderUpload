@@ -130,9 +130,9 @@ interface UploadHandler
 
     /**
      * 返回已授权的URL
-     * @param string $url     原URL
+     * @param string $key     文件路径标识
      * @param int    $expires 有效期(秒)，为0表示永久有效
      * @return string
      */
-    public function getAuthorizedUrl(string $url, int $expires = 0): string;
+    public function getAuthorizedUrl(string $key, int $expires = 0): string;
 }
