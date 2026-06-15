@@ -17,9 +17,9 @@
     "php": ">=7.1.0",
     "ext-json": "*",
     "fize/cache": "*",
-    "fize/exception": "^3.2.0",
-    "fize/http": "^5.4.0",
-    "fize/io": "^9.2.0",
+    "fize/exception": "*",
+    "fize/http": "*",
+    "fize/io": "*",
     "fize/web": "*"
   },
   "suggest": {
@@ -34,7 +34,6 @@
   },
   "require-dev": {
     "aliyuncs/oss-sdk-php": "^2.7.2",
-    "fize/third-pingan": "^0.2.0",
     "obs/esdk-obs-php": "^3.24.9",
     "phpunit/phpunit": "^9.6.34",
     "qcloud/cos-sdk-v5": "^2.6.16",
