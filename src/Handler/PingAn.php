@@ -89,7 +89,7 @@ class PingAn extends UploadHandlerAbstract implements UploadHandler
         $extension = strtolower($orig_file->getExtension());
         $mime = $orig_file->getMime();
         unset($orig_file);
-        $this->checkExtension($extension);
+        $this->checkExt($extension);
 
         if (is_null($key)) {
             if ($extension) {
@@ -474,7 +474,7 @@ class PingAn extends UploadHandlerAbstract implements UploadHandler
         if (empty($extension)) {
             throw new FileException($origName, '禁止上传无后缀名的文件');
         }
-        $this->checkExtension($extension);
+        $this->checkExt($extension);
 
         $size = $uploadFile->getSize();
         $tmpName = $uploadFile->getTmpName();

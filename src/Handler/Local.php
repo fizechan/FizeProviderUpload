@@ -29,11 +29,9 @@ class Local extends UploadHandlerAbstract implements UploadHandler
             'domain'   => null,                                   // 上传时指定文件URL主机域名。为null表示直接获取当前域名
             'rootPath' => '.',                                    // 根目录
             'saveDir'  => '/uploads',                             // 上传路径
-            'tempDir'  => '/temp',                                // 临时文件路径
+            'tempPath' => './temp',                                // 临时目录
 
-            'multiple'                            => false,                                 // 是否支持批量上传
-            "max_upload_amount_per_minute_logged" => 60,                                    // @todo 属于业务逻辑，考虑外移。
-            "max_upload_amount_per_hour_unlogged" => 1800,                                  // @todo 属于业务逻辑，考虑外移。
+            'multiple' => false,                                  // 是否支持批量上传
         ];
         $this->cfg = array_merge($defaultCfg, $cfg);
 
@@ -89,7 +87,7 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         $orig_file = new File($filePath);
         $extension = strtolower($orig_file->getExtension());
         unset($orig_file);
-        $this->checkExtension($extension);
+        $this->checkExt($extension);
 
         [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension);
         $size = filesize($filePath);
@@ -148,7 +146,7 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         if (empty($extension)) {
             throw new FileException('', '无法识别上传的文件后缀名');
         }
-        $this->checkExtension($extension);
+        $this->checkExt($extension);
 
         [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension);
 
@@ -221,7 +219,7 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         unset($fso);
 
         if (empty($extension)) {
-            [$targetPath, $name, $extension, $key] = $this->handleNoExtensionFile($dir, $name, $key);
+            [$targetPath, $name, $extension, $key] = $this->handleNoExtFile($dir, $name, $key);
         }
 
         $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
@@ -494,16 +492,16 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         if (is_null($mime)) {
             throw new FileException($origName, '无法识别文件！');
         }
-        $extension = MIME::getExtensionByMime($mime);
-        if (empty($extension)) {
+        $ext = MIME::getExtensionByMime($mime);
+        if (empty($ext)) {
             throw new FileException($origName, '禁止上传无后缀名的文件');
         }
-        $this->checkExtension($extension);
+        $this->checkExt($ext);
 
         $size = $uploadFile->getSize();
         $tmpName = $uploadFile->getTmpName();
 
-        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension);
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $ext);
         if (is_file($targetPath)) {
             if ($this->replace) {
                 unlink($targetPath);
@@ -516,14 +514,14 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
         $url = $this->cfg['domain'] . $path;
         $data = [
-            'key'       => $key,                            // 文件路径标识
-            'name'      => $name,                           // 保存文件名
-            'path'      => $path,                           // WEB路径
-            'url'       => $url,                            // 完整URL
-            'size'      => $size,                           // 文件大小
-            'mime'      => $mime,                           // MIME类型
-            'extension' => $extension,                      // 后缀名
-            'sha1'      => $sha1,                           // 文件SHA1
+            'key'  => $key,     // 文件路径标识
+            'name' => $name,    // 保存文件名
+            'path' => $path,    // WEB路径
+            'url'  => $url,     // 完整URL
+            'size' => $size,    // 文件大小
+            'mime' => $mime,    // MIME类型
+            'ext'  => $ext,     // 后缀名
+            'sha1' => $sha1,    // 文件SHA1
 
             'dir'       => $dir,         // 生成路径
             'full_path' => $targetPath,  // 本机完整路径
@@ -535,12 +533,12 @@ class Local extends UploadHandlerAbstract implements UploadHandler
 
     /**
      * 获取路径相关信息
-     * @param string|null $key       文件唯一标识
-     * @param string|null $extension 后缀名
-     * @param string|null $uuid      唯一识别码
+     * @param string|null $key  文件唯一标识
+     * @param string|null $ext  后缀名
+     * @param string|null $uuid 唯一识别码
      * @return array [路径标识, 保存目录, 保存文件名, 保存路径]
      */
-    protected function getPathInfo(string $key = null, string $extension = null, string $uuid = null): array
+    protected function getPathInfo(string $key = null, string $ext = null, string $uuid = null): array
     {
         if (is_null($key)) {
             $sdir = $this->getSaveDir();
@@ -548,10 +546,10 @@ class Local extends UploadHandlerAbstract implements UploadHandler
             if (is_null($uuid)) {
                 $uuid = uniqid();
             }
-            if (empty($extension)) {
+            if (empty($ext)) {
                 $name = $uuid;
             } else {
-                $name = $uuid . '.' . $extension;
+                $name = $uuid . '.' . $ext;
             }
             $key = $sdir . '/' . $name;
         } else {
@@ -570,14 +568,14 @@ class Local extends UploadHandlerAbstract implements UploadHandler
      * @param string $key  文件路径标识
      * @return array [文件路径, 文件名, 后缀名]
      */
-    protected function handleNoExtensionFile(string $dir, string $name, string $key): array
+    protected function handleNoExtFile(string $dir, string $name, string $key): array
     {
         $targetPath = $this->cfg['rootPath'] . $dir . '/' . $name;
         $fso = new File($targetPath);
-        $extension = $fso->getExtension();
-        if ($extension) {
-            $name = $name . '.' . $extension;
-            $key = $key . '.' . $extension;
+        $ext = $fso->getExtension();
+        if ($ext) {
+            $name = $name . '.' . $ext;
+            $key = $key . '.' . $ext;
             $targetPath = $this->cfg['rootPath'] . $dir . '/' . $name;
             $result = $fso->rename($targetPath);  // 重命名为含后缀名文件
             if (!$result) {
@@ -585,6 +583,6 @@ class Local extends UploadHandlerAbstract implements UploadHandler
             }
         }
         unset($fso);
-        return [$targetPath, $name, $extension, $key];
+        return [$targetPath, $name, $ext, $key];
     }
 }

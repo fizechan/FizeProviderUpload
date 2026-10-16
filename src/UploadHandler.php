@@ -19,9 +19,9 @@ interface UploadHandler
 
     /**
      * 设置允许上传的文件后缀名
-     * @param string $extensions 后缀名，多个以逗号隔开。*表示不做限制。
+     * @param string $exts 后缀名，多个以逗号隔开。*表示不做限制。
      */
-    public function setAllowExtensions(string $extensions);
+    public function setAllowExts(string $exts);
 
     /**
      * 设置允许上传的文件大小

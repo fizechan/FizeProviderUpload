@@ -33,8 +33,6 @@ public function __construct(array $cfg = [], array $providerCfg = [], string $te
 | `saveDir` | `'/uploads'` | 上传子目录 |
 | `tempDir` | `'/temp'` | 分片临时目录（相对 `rootPath`） |
 | `multiple` | `false` | 源码写入但未使用 |
-| `max_upload_amount_per_minute_logged` | `60` | 未使用；注释标明属于业务逻辑、拟外移 |
-| `max_upload_amount_per_hour_unlogged` | `1800` | 同上 |
 
 `$tempDir` 参数优先于 `$cfg['tempDir']`。最终：
 

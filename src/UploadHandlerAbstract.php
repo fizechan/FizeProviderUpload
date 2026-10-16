@@ -12,7 +12,7 @@ use Fize\IO\File;
 /**
  * 文件上传基类
  */
-abstract class UploadHandlerAbstract
+abstract class UploadHandlerAbstract implements UploadHandler
 {
 
     /**
@@ -33,7 +33,7 @@ abstract class UploadHandlerAbstract
     /**
      * @var string 允许上传的文件后缀名
      */
-    protected $allowExtensions = "*";
+    protected $allowExts = "*";
 
     /**
      * @var int 允许上传的文件大小
@@ -47,11 +47,11 @@ abstract class UploadHandlerAbstract
 
     /**
      * 设置允许上传的文件后缀名
-     * @param string $extensions 后缀名，多个以逗号隔开。
+     * @param string $exts 后缀名，多个以逗号隔开。
      */
-    public function setAllowExtensions(string $extensions)
+    public function setAllowExts(string $exts)
     {
-        $this->allowExtensions = $extensions;
+        $this->allowExts = $exts;
     }
 
     /**
@@ -74,20 +74,13 @@ abstract class UploadHandlerAbstract
 
     /**
      * 获取保存的文件夹路径部分
-     * @param string|null $type 指定类型
      * @return string
-     * @todo 考虑移除$type参数
      */
-    protected function getSaveDir(?string $type = null): string
+    protected function getSaveDir(): string
     {
         $ym = date('Ym');
         $dy = date('d');
-
-        if ($type) {
-            $path = $type . '/' . $ym . '/' . $dy;
-        } else {
-            $path = $ym . '/' . $dy;
-        }
+        $path = $ym . '/' . $dy;
         return $path;
     }
 
@@ -162,6 +155,9 @@ abstract class UploadHandlerAbstract
         if ($name) {
             $uploadFiles = $uploadFiles[$name] ?? [];
         }
+        if (!is_array($uploadFiles)) {
+            throw new FileException("不是文件数组：{$name}");
+        }
         return $uploadFiles;
     }
 
@@ -181,31 +177,31 @@ abstract class UploadHandlerAbstract
 
     /**
      * 检查文件后缀名
-     * @param string $extension 后缀名
+     * @param string $ext 后缀名
      * @return void
      */
-    protected function checkExtension(string $extension)
+    protected function checkExt(string $ext)
     {
-        if ($this->allowExtensions == '*') {
+        if ($this->allowExts == '*') {
             return;
         }
-        $allowExtensions = explode(',', $this->allowExtensions);
-        if (!in_array($extension, $allowExtensions)) {
-            throw new FileException("禁止上传后缀名为{$extension}的文件");
+        $allowExts = explode(',', $this->allowExts);
+        if (!in_array($ext, $allowExts)) {
+            throw new FileException("禁止上传后缀名为{$ext}的文件");
         }
     }
 
     /**
      * 生成key
-     * @param string|null $name      文件名
-     * @param string|null $extension 后缀名
+     * @param string|null $name 文件名
+     * @param string|null $ext  后缀名
      * @return string
      */
-    protected function generateKey(string $name = null, string $extension = null): string
+    protected function generateKey(string $name = null, string $ext = null): string
     {
         if (is_null($name)) {
-            if ($extension) {
-                $name = uniqid() . '.' . $extension;
+            if ($ext) {
+                $name = uniqid() . '.' . $ext;
             } else {
                 $name = uniqid();
             }
