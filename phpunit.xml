@@ -1,0 +1,2 @@
+<phpunit cacheResult="true" cacheDirectory=".phpunit.cache">
+</phpunit>

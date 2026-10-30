@@ -29,8 +29,7 @@ class Local extends UploadHandlerAbstract implements UploadHandler
             'domain'   => null,                                   // 上传时指定文件URL主机域名。为null表示直接获取当前域名
             'rootPath' => '.',                                    // 根目录
             'saveDir'  => '/uploads',                             // 上传路径
-            'tempPath' => './temp',                                // 临时目录
-
+            'tempPath' => './temp',                               // 临时目录
             'multiple' => false,                                  // 是否支持批量上传
         ];
         $this->cfg = array_merge($defaultCfg, $cfg);
@@ -85,11 +84,11 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         $origName = basename($filePath);
         $origPath = realpath($filePath);
         $orig_file = new File($filePath);
-        $extension = strtolower($orig_file->getExtension());
+        $ext = strtolower($orig_file->getExtension());
         unset($orig_file);
-        $this->checkExt($extension);
+        $this->checkExt($ext);
 
-        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension);
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $ext);
         $size = filesize($filePath);
 
         if (is_file($targetPath)) {
@@ -112,14 +111,14 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         $url = $this->cfg['domain'] . $path;
 
         $data = [
-            'key'       => $key,
-            'name'      => $name,
-            'path'      => $path,
-            'url'       => $url,
-            'size'      => $size,
-            'mime'      => $mime,
-            'extension' => $extension,
-            'sha1'      => $sha1,
+            'key'  => $key,
+            'name' => $name,
+            'path' => $path,
+            'url'  => $url,
+            'size' => $size,
+            'mime' => $mime,
+            'ext'  => $ext,
+            'sha1' => $sha1,
 
             'dir'       => $dir,
             'full_path' => $targetPath,
@@ -142,13 +141,13 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         }
 
         $mime = strtolower($matches[2]);
-        $extension = MIME::getExtensionByMime($mime);
-        if (empty($extension)) {
+        $ext = MIME::getExtensionByMime($mime);
+        if (empty($ext)) {
             throw new FileException('', '无法识别上传的文件后缀名');
         }
-        $this->checkExt($extension);
+        $this->checkExt($ext);
 
-        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension);
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $ext);
 
         if (is_file($targetPath)) {
             if ($this->replace) {
@@ -171,14 +170,14 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         $url = $this->cfg['domain'] . $path;
 
         $data = [
-            'key'       => $key,
-            'name'      => $name,
-            'path'      => $path,
-            'url'       => $url,
-            'size'      => $size,
-            'mime'      => $mime,
-            'extension' => $extension,
-            'sha1'      => $sha1,
+            'key'  => $key,
+            'name' => $name,
+            'path' => $path,
+            'url'  => $url,
+            'size' => $size,
+            'mime' => $mime,
+            'ext'  => $ext,
+            'sha1' => $sha1,
 
             'dir'       => $dir,
             'full_path' => $targetPath
@@ -195,8 +194,8 @@ class Local extends UploadHandlerAbstract implements UploadHandler
     public function uploadRemote(string $url, ?string $key = null): array
     {
         $origUrl = $url;
-        $extension = pathinfo($origUrl, PATHINFO_EXTENSION);
-        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension);
+        $ext = pathinfo($origUrl, PATHINFO_EXTENSION);
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $ext);
 
         $content = file_get_contents($url);
         if ($content === false) {
@@ -218,8 +217,8 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         $mime = $fso->getMime();
         unset($fso);
 
-        if (empty($extension)) {
-            [$targetPath, $name, $extension, $key] = $this->handleNoExtFile($dir, $name, $key);
+        if (empty($ext)) {
+            [$targetPath, $name, $ext, $key] = $this->handleNoExtFile($dir, $name, $key);
         }
 
         $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
@@ -228,14 +227,14 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         $sha1 = hash_file('sha1', $targetPath);
 
         $data = [
-            'key'       => $key,
-            'name'      => $name,
-            'path'      => $path,
-            'url'       => $url,
-            'size'      => $size,
-            'mime'      => $mime,
-            'extension' => $extension,
-            'sha1'      => $sha1,
+            'key'  => $key,
+            'name' => $name,
+            'path' => $path,
+            'url'  => $url,
+            'size' => $size,
+            'mime' => $mime,
+            'ext'  => $ext,
+            'sha1' => $sha1,
 
             'dir'       => $dir,
             'full_path' => $targetPath,
@@ -313,12 +312,12 @@ class Local extends UploadHandlerAbstract implements UploadHandler
 
     /**
      * 分块上传：完成上传
-     * @param string      $uuid      唯一识别码
-     * @param string|null $key       文件路径标识
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string      $uuid 唯一识别码
+     * @param string|null $key  文件路径标识
+     * @param string|null $ext  后缀名，不指定则根据MIME进行猜测。
      * @return array 返回保存文件的相关信息
      */
-    public function uploadLargeComplete(string $uuid, ?string $key = null, ?string $extension = null): array
+    public function uploadLargeComplete(string $uuid, ?string $key = null, ?string $ext = null): array
     {
         $info = $this->getPartUploadInfo($uuid);
         self::assertHasKey($info, 'parts');
@@ -331,7 +330,7 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         if (is_null($key)) {
             $key = $info['key'];
         }
-        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $extension, $uuid);
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo($key, $ext, $uuid);
 
         // 按序合并
         $fso = new File($targetPath, 'a+b');
@@ -342,12 +341,12 @@ class Local extends UploadHandlerAbstract implements UploadHandler
             }
             $fso->fwrite(file_get_contents($tempFile));
         }
-        if (!$extension) {
-            $extension = $fso->getExtension();
-            if ($extension) {
-                $key .= "." . $extension;
-                $name .= "." . $extension;
-                $targetPath .= "." . $extension;
+        if (!$ext) {
+            $ext = $fso->getExtension();
+            if ($ext) {
+                $key .= "." . $ext;
+                $name .= "." . $ext;
+                $targetPath .= "." . $ext;
                 $fso->rename($name);
             }
         }
@@ -366,15 +365,15 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
         $url = $this->cfg['domain'] . $path;
         return [
-            'key'       => $key,                            // 文件路径标识
-            'name'      => $name,                           // 保存文件名
-            'path'      => $path,                           // WEB路径
-            'url'       => $url,                            // 完整URL
-            'size'      => $size,                           // 文件大小
-            'mime'      => $mime,                           // MIME类型
-            'extension' => $extension,                      // 后缀名
-            'sha1'      => $sha1,                           // 文件SHA1
-            'uuid'      => $uuid,
+            'key'  => $key,                            // 文件路径标识
+            'name' => $name,                           // 保存文件名
+            'path' => $path,                           // WEB路径
+            'url'  => $url,                            // 完整URL
+            'size' => $size,                           // 文件大小
+            'mime' => $mime,                           // MIME类型
+            'ext'  => $ext,                            // 后缀名
+            'sha1' => $sha1,                           // 文件SHA1
+            'uuid' => $uuid,
 
             'dir'       => $dir,         // 生成路径
             'full_path' => $targetPath,  // 本机完整路径
@@ -402,11 +401,11 @@ class Local extends UploadHandlerAbstract implements UploadHandler
      * @param string      $name      文件域表单名
      * @param int         $blobIndex 当前分片下标。-1表示初始化，-2表示完成上传。
      * @param int|null    $blobCount 分片总数量，建议指定该参数。
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $ext       后缀名，不指定则根据MIME进行猜测。
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return array
      */
-    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $extension = null, ?string $uuid = null): array
+    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $ext = null, ?string $uuid = null): array
     {
         // 特殊值-1：初始化
         if ($blobIndex == -1) {
@@ -420,7 +419,7 @@ class Local extends UploadHandlerAbstract implements UploadHandler
             if (!$uuid) {
                 throw new RuntimeException('请指定参数uuid。');
             }
-            $info = $this->uploadLargeComplete($uuid, $extension);
+            $info = $this->uploadLargeComplete($uuid, $ext);
             return $info;
         }
 
@@ -442,27 +441,64 @@ class Local extends UploadHandlerAbstract implements UploadHandler
         }
 
         // 完成上传
-        $info = $this->uploadLargeComplete($uuid, $extension);
+        $info = $this->uploadLargeComplete($uuid, $ext);
         return $info;
     }
 
     /**
      * 上传多个分块并合并成文件
-     * @param array       $parts     分块数组
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
-     * @param string|null $uuid      唯一识别码，不指定则自动生成。
+     * @param array       $parts 分块数组
+     * @param string|null $ext   后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $uuid  唯一识别码，不指定则自动生成。
      * @return array
-     * @todo 本机不需要这么麻烦，直接拼接。
      */
-    public function uploadParts(array $parts, ?string $extension = null, ?string $uuid = null): array
+    public function uploadParts(array $parts, ?string $ext = null, ?string $uuid = null): array
     {
-        $blobCount = count($parts);
-        $uuid = $this->uploadLargeInit($blobCount, $uuid);
-        foreach ($parts as $blobIndex => $content) {
-            $this->uploadLargePart($uuid, $content, $blobIndex);
+        if (is_null($uuid)) {
+            $uuid = uniqid();
         }
-        $info = $this->uploadLargeComplete($uuid, $extension);
-        return $info;
+        [$key, $dir, $name, $targetPath] = $this->getPathInfo(null, $ext, $uuid);
+
+        $fso = new File($targetPath, 'a+b');
+        foreach ($parts as $content) {
+            $result = $fso->fwrite($content);
+            if (!$result) {
+                throw new FileException($targetPath, '上传失败');
+            }
+        }
+
+        if (!$ext) {
+            $ext = $fso->getExtension();
+            if ($ext) {
+                $key .= "." . $ext;
+                $name .= "." . $ext;
+                $targetPath .= "." . $ext;
+                $fso->rename($targetPath);
+                unset($fso);
+                $fso = new File($targetPath);
+            }
+        }
+        $mime = $fso->getMime();
+        unset($fso);
+
+        $size = filesize($targetPath);
+        $sha1 = hash_file('sha1', $targetPath);
+        $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
+        $url = $this->cfg['domain'] . $path;
+        return [
+            'key'  => $key,                            // 文件路径标识
+            'name' => $name,                           // 保存文件名
+            'path' => $path,                           // WEB路径
+            'url'  => $url,                            // 完整URL
+            'size' => $size,                           // 文件大小
+            'mime' => $mime,                           // MIME类型
+            'ext'  => $ext,                            // 后缀名
+            'sha1' => $sha1,                           // 文件SHA1
+            'uuid' => $uuid,
+
+            'dir'       => $dir,         // 生成路径
+            'full_path' => $targetPath,  // 本机完整路径
+        ];
     }
 
     /**

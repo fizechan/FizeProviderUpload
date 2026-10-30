@@ -95,12 +95,12 @@ interface UploadHandler
 
     /**
      * 分块上传：完成上传
-     * @param string      $uuid      唯一识别码
-     * @param string|null $key       文件路径标识
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string      $uuid 唯一识别码
+     * @param string|null $key  文件路径标识
+     * @param string|null $ext  后缀名，不指定则根据MIME进行猜测。
      * @return array 返回保存文件的相关信息
      */
-    public function uploadLargeComplete(string $uuid, ?string $key = null, ?string $extension = null): array;
+    public function uploadLargeComplete(string $uuid, ?string $key = null, ?string $ext = null): array;
 
     /**
      * 分块上传：终止上传
@@ -113,20 +113,20 @@ interface UploadHandler
      * @param string      $name      文件域表单名
      * @param int         $blobIndex 当前分片下标，建议指定该参数。
      * @param int|null    $blobCount 分片总数量，建议指定该参数。
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $ext       后缀名，不指定则根据MIME进行猜测。
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return array
      */
-    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $extension = null, ?string $uuid = null): array;
+    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $ext = null, ?string $uuid = null): array;
 
     /**
      * 上传多个分块并合并成文件
-     * @param array       $parts     分块数组
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
-     * @param string|null $uuid      唯一识别码，不指定则自动生成。
+     * @param array       $parts 分块数组
+     * @param string|null $ext   后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $uuid  唯一识别码，不指定则自动生成。
      * @return array
      */
-    public function uploadParts(array $parts, ?string $extension = null, ?string $uuid = null): array;
+    public function uploadParts(array $parts, ?string $ext = null, ?string $uuid = null): array;
 
     /**
      * 返回已授权的URL

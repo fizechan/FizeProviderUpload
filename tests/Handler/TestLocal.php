@@ -168,11 +168,20 @@ class TestLocal extends TestCase
     public function testUploadParts()
     {
         $parts = [];
-        $parts[] = file_get_contents('E:\work\fuli\commons\code\commons-third\temp\PMBOK.pdf.1.part');
-        $parts[] = file_get_contents('E:\work\fuli\commons\code\commons-third\temp\PMBOK.pdf.2.part');
-        $parts[] = file_get_contents('E:\work\fuli\commons\code\commons-third\temp\PMBOK.pdf.3.part');
-        $parts[] = file_get_contents('E:\work\fuli\commons\code\commons-third\temp\PMBOK.pdf.4.part');
-        $uploader = new Local();
+        $parts[] = file_get_contents(dirname(__FILE__, 3) . '/temp/buildadmin-v2.zip.pick1');
+        $parts[] = file_get_contents(dirname(__FILE__, 3) . '/temp/buildadmin-v2.zip.pick2');
+        $parts[] = file_get_contents(dirname(__FILE__, 3) . '/temp/buildadmin-v2.zip.pick3');
+        $parts[] = file_get_contents(dirname(__FILE__, 3) . '/temp/buildadmin-v2.zip.pick4');
+        $parts[] = file_get_contents(dirname(__FILE__, 3) . '/temp/buildadmin-v2.zip.pick5');
+        $parts[] = file_get_contents(dirname(__FILE__, 3) . '/temp/buildadmin-v2.zip.pick6');
+        $parts[] = file_get_contents(dirname(__FILE__, 3) . '/temp/buildadmin-v2.zip.pick7');
+        $parts[] = file_get_contents(dirname(__FILE__, 3) . '/temp/buildadmin-v2.zip.pick8');
+        $cfg = [
+            'domain'   => 'https://www.baidu.com',
+            'rootPath' => dirname(__FILE__, 3) . '/temp',
+            'saveDir'  => '/uploads'
+        ];
+        $uploader = new Local($cfg);
         $result = $uploader->uploadParts($parts);
         var_dump($result);
         self::assertIsArray($result);
