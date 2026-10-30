@@ -85,12 +85,12 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
         $origPath = realpath($filePath);
         $size = filesize($filePath);
         $orig_file = new File($filePath);
-        $extension = strtolower($orig_file->getExtension());
+        $ext = strtolower($orig_file->getExtension());
         $mime = $orig_file->getMime();
         unset($orig_file);
-        $this->checkExt($extension);
+        $this->checkExt($ext);
 
-        $key = $key ?: $this->generateKey(null, $extension);
+        $key = $key ?: $this->generateKey(null, $ext);
         $sha1 = hash_file('sha1', $filePath);
         $name = basename($key);
         $dir = dirname($key);
@@ -102,12 +102,12 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
         ]);
 
         $data = [
-            'key'       => $key,
-            'name'      => $name,
-            'size'      => $size,
-            'mime'      => $mime,
-            'extension' => $extension,
-            'sha1'      => $sha1,
+            'key'  => $key,
+            'name' => $name,
+            'size' => $size,
+            'mime' => $mime,
+            'ext'  => $ext,
+            'sha1' => $sha1,
 
             'dir'       => $dir,
             'orig_name' => $origName,
@@ -130,12 +130,12 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
         }
 
         $mime = strtolower($matches[2]);
-        $extension = MIME::getExtensionByMime($mime);
-        if (empty($extension)) {
+        $ext = MIME::getExtensionByMime($mime);
+        if (empty($ext)) {
             throw new FileException('无法识别上传的文件后缀名');
         }
 
-        $name = uniqid() . '.' . $extension;
+        $name = uniqid() . '.' . $ext;
         $save_file = $this->tempDirPath . DIRECTORY_SEPARATOR . $name;  // 因为会上传到COS，故放在临时文件夹中待后面上传后删除
         $fso = new File($save_file, 'w');
         $result = $fso->fwrite(base64_decode(str_replace($matches[1], '', $base64Centent)));
@@ -147,7 +147,7 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
             throw new FileException('上传失败');
         }
 
-        $key = $key ?: $this->generateKey($name, $extension);
+        $key = $key ?: $this->generateKey($name, $ext);
 
         $result = $this->cosClient->putObject([
             'Bucket' => $this->cfg['bucket'],
@@ -156,14 +156,14 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
         ]);
 
         $data = [
-            'key'       => $key,
-            'name'      => $name,
-            'size'      => $size,
-            'mime'      => $mime,
-            'extension' => $extension,
-            'sha1'      => $sha1,
+            'key'  => $key,
+            'name' => $name,
+            'size' => $size,
+            'mime' => $mime,
+            'ext'  => $ext,
+            'sha1' => $sha1,
 
-            'extend'    => $result
+            'extend' => $result
         ];
         unlink($save_file);
         return $data;
@@ -178,9 +178,9 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
     public function uploadRemote(string $url, ?string $key = null): array
     {
         $origUrl = $url;
-        $extension = pathinfo($origUrl, PATHINFO_EXTENSION);
-        if ($extension) {
-            $save_name = uniqid() . '.' . $extension;
+        $ext = pathinfo($origUrl, PATHINFO_EXTENSION);
+        if ($ext) {
+            $save_name = uniqid() . '.' . $ext;
         } else {
             $save_name = uniqid();
         }
@@ -219,8 +219,9 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
         if ($info) {  // 存在旧的分片信息则删除重新初始化。
             if (isset($info['parts'])) {
                 foreach ($info['parts'] as $part) {
-                    if (is_file($part)) {
-                        unlink($part);
+                    $tempFile = $this->tempDirPath . '/' . $part;
+                    if (is_file($tempFile)) {
+                        unlink($tempFile);
                     }
                 }
             }
@@ -229,7 +230,8 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
         $info = [
             'uuid'      => $uuid,
             'blobCount' => $blobCount,
-            'parts'     => (object)[],
+            'key'       => $key,
+            'parts'     => [],
         ];
         $this->savePartUploadInfo($uuid, $info);
         return $uuid;
@@ -258,7 +260,7 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
         $tempFile = $this->tempDirPath . '/' . $tempfileName;
         $fso = new File($tempFile, 'wb');
         $result = $fso->fwrite($content);
-        if (!$result) {
+        if ($result === false || $result !== strlen($content)) {
             throw new FileException($tempFile, '上传失败');
         }
         unset($fso);
@@ -269,12 +271,12 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
 
     /**
      * 分块上传：完成上传
-     * @param string      $uuid      唯一识别码
-     * @param string|null $key       文件路径标识
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string      $uuid 唯一识别码
+     * @param string|null $key  文件路径标识
+     * @param string|null $ext  后缀名，不指定则根据MIME进行猜测。
      * @return array 返回保存文件的相关信息
      */
-    public function uploadLargeComplete(string $uuid, ?string $key = null, ?string $extension = null): array
+    public function uploadLargeComplete(string $uuid, ?string $key = null, ?string $ext = null): array
     {
         $info = $this->getPartUploadInfo($uuid);
         self::assertHasKey($info, 'parts');
@@ -284,36 +286,61 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
             }
         }
 
-        [$key, $name, $targetPath] = $this->getPathInfo(null, $extension);
-
-        // 按序合并
-        $fso = new File($targetPath, 'a+b');
-        for ($i = 0; $i < count($info['parts']); $i++) {
-            $tempFile = $this->tempDirPath . '/' . $info['parts']["BLOB-{$i}"];
-            if (!is_file($tempFile)) {
+        $parts = $info['parts'];
+        if (!$parts) {
+            throw new RuntimeException('没有可合并的分片！');
+        }
+        for ($i = 0; $i < count($parts); $i++) {
+            if (!isset($parts["BLOB-{$i}"]) || !is_file($this->tempDirPath . '/' . $parts["BLOB-{$i}"])) {
                 throw new RuntimeException('分片文件不存在！');
             }
-            $fso->fwrite(file_get_contents($tempFile));
         }
-        if (!$extension) {
-            $extension = $fso->getExtension();
-            if ($extension) {
-                $key .= "." . $extension;
-                $name .= "." . $extension;
-                $targetPath .= "." . $extension;
-                $fso->rename($name);
+
+        $key = $key ?? ($info['key'] ?? null);
+        $targetPath = tempnam($this->tempDirPath, 'cos_');
+        if ($targetPath === false) {
+            throw new RuntimeException('无法创建合并临时文件！');
+        }
+        try {
+            // 每次重新合并，上传失败重试时不会重复追加分片。
+            $fso = new File($targetPath, 'wb');
+            for ($i = 0; $i < count($parts); $i++) {
+                $tempFile = $this->tempDirPath . '/' . $parts["BLOB-{$i}"];
+                $content = file_get_contents($tempFile);
+                if ($content === false || $fso->fwrite($content) !== strlen($content)) {
+                    throw new RuntimeException('合并分片失败！');
+                }
             }
+            unset($fso);
+            $tempFile = new File($targetPath);
+            $mime = $tempFile->getMime();
+            $ext = $ext ?: pathinfo($key ?? '', PATHINFO_EXTENSION);
+            if (!$ext) {
+                $ext = MIME::getExtensionByMime($mime) ?: '';
+            }
+            $this->checkExt($ext);
+            $key = $key ?? $this->generateKey(null, $ext);
+            $name = basename($key);
+            $size = $tempFile->getSize();
+            $sha1 = hash_file('sha1', $targetPath);
+            unset($tempFile);
+            $path = $key;
+            $url = empty($this->cfg['domain'])
+                ? $this->cosClient->getObjectUrlWithoutSign($this->cfg['bucket'], $key)
+                : rtrim($this->cfg['domain'], '/') . '/' . ltrim($key, '/');
+
+            $stream = fopen($targetPath, 'rb');
+            try {
+                $result = $this->cosClient->upload($this->cfg['bucket'], $key, $stream);
+            } finally {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
+        } finally {
+            unset($fso, $tempFile);
+            unlink($targetPath);
         }
-        $mime = $fso->getMime();
-        unset($fso);
-
-        $size = filesize($targetPath);
-        $sha1 = hash_file('sha1', $targetPath);
-        $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
-        $url = $this->cfg['domain'] . $path;
-
-        // 上传到腾讯云
-        $result = $this->cosClient->Upload($this->cfg['bucket'], $key, fopen($targetPath, 'rb'));
 
         // 删除相关临时文件
         foreach ($info['parts'] as $tempfileName) {
@@ -321,21 +348,20 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
             unlink($tempFile);
         }
         $this->deletPartUploadInfo($uuid);
-        unlink($targetPath);
 
         return [
-            'key'       => $key,                            // 文件路径标识
-            'name'      => $name,                           // 保存文件名
-            'path'      => $path,                           // WEB路径
-            'url'       => $url,                            // 完整URL
-            'size'      => $size,                           // 文件大小
-            'mime'      => $mime,                           // MIME类型
-            'extension' => $extension,                      // 后缀名
-            'sha1'      => $sha1,                           // 文件SHA1
-            'uuid'      => $uuid,
+            'key'  => $key,                            // 文件路径标识
+            'name' => $name,                           // 保存文件名
+            'path' => $path,                           // WEB路径
+            'url'  => $url,                            // 完整URL
+            'size' => $size,                           // 文件大小
+            'mime' => $mime,                           // MIME类型
+            'ext'  => $ext,                            // 后缀名
+            'sha1' => $sha1,                           // 文件SHA1
+            'uuid' => $uuid,
 
             'full_path' => $targetPath,  // 本机完整路径
-            'extend' => $result
+            'extend'    => $result
         ];
     }
 
@@ -360,15 +386,15 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
      * @param string      $name      文件域表单名
      * @param int         $blobIndex 当前分片下标。-1表示初始化，-2表示完成上传。
      * @param int|null    $blobCount 分片总数量，建议指定该参数。
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $ext       后缀名，不指定则根据MIME进行猜测。
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return array
      */
-    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $extension = null, ?string $uuid = null): array
+    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $ext = null, ?string $uuid = null): array
     {
         // 特殊值-1：初始化
         if ($blobIndex == -1) {
-            $uuid = $this->uploadLargeInit($blobCount, $uuid);
+            $uuid = $this->uploadLargeInit($blobCount, null, $uuid);
             $info = $this->getPartUploadInfo($uuid);
             return $info;
         }
@@ -378,7 +404,7 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
             if (!$uuid) {
                 throw new RuntimeException('请指定参数uuid。');
             }
-            $info = $this->uploadLargeComplete($uuid, $extension);
+            $info = $this->uploadLargeComplete($uuid, null, $ext);
             return $info;
         }
 
@@ -388,7 +414,7 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
         }
         $info = $this->getPartUploadInfo($uuid);
         if (!$info) {
-            $this->uploadLargeInit($blobCount, $uuid);
+            $this->uploadLargeInit($blobCount, null, $uuid);
         }
 
         // 上传块
@@ -400,25 +426,25 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
         }
 
         // 完成上传
-        $info = $this->uploadLargeComplete($uuid, $extension);
+        $info = $this->uploadLargeComplete($uuid, null, $ext);
         return $info;
     }
 
     /**
      * 上传多个分块并合并成文件
-     * @param array       $parts     分块数组
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
-     * @param string|null $uuid      唯一识别码，不指定则自动生成。
+     * @param array       $parts 分块数组
+     * @param string|null $ext   后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $uuid  唯一识别码，不指定则自动生成。
      * @return array
      */
-    public function uploadParts(array $parts, ?string $extension = null, ?string $uuid = null): array
+    public function uploadParts(array $parts, ?string $ext = null, ?string $uuid = null): array
     {
         $blobCount = count($parts);
-        $uuid = $this->uploadLargeInit($blobCount, $uuid);
+        $uuid = $this->uploadLargeInit($blobCount, null, $uuid);
         foreach ($parts as $blobIndex => $content) {
             $this->uploadLargePart($uuid, $content, $blobIndex);
         }
-        $info = $this->uploadLargeComplete($uuid, $extension);
+        $info = $this->uploadLargeComplete($uuid, null, $ext);
         return $info;
     }
 
@@ -454,18 +480,18 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
         if (is_null($mime)) {
             throw new FileException($origName, '无法识别文件！');
         }
-        $extension = MIME::getExtensionByMime($mime);
-        if (empty($extension)) {
+        $ext = MIME::getExtensionByMime($mime);
+        if (empty($ext)) {
             throw new FileException($origName, '禁止上传无后缀名的文件');
         }
-        $this->checkExt($extension);
+        $this->checkExt($ext);
 
         $size = $uploadFile->getSize();
         $tmpName = $uploadFile->getTmpName();
         $sha1 = hash_file('sha1', $tmpName);
 
         if (is_null($key)) {
-            $key = $this->generateKey(null, $extension);
+            $key = $this->generateKey(null, $ext);
         }
 
         $result = $this->cosClient->putObject([
@@ -479,36 +505,36 @@ class Tencent extends UploadHandlerAbstract implements UploadHandler
             unlink($tmpName);
         }
         $data = [
-            'key'       => $key,                            // 文件路径标识
-            'name'      => $name,                           // 保存文件名
-            'size'      => $size,                           // 文件大小
-            'mime'      => $mime,                           // MIME类型
-            'extension' => $extension,                      // 后缀名
-            'sha1'      => $sha1,                           // 文件SHA1
+            'key'  => $key,                            // 文件路径标识
+            'name' => $name,                           // 保存文件名
+            'size' => $size,                           // 文件大小
+            'mime' => $mime,                           // MIME类型
+            'ext'  => $ext,                            // 后缀名
+            'sha1' => $sha1,                           // 文件SHA1
 
             'dir'       => $dir,         // 生成路径
             'orig_name' => $origName,    // 原文件名
             'tmp_name'  => $tmpName,     // 上传临时文件路径
 
-            'extend'    => $result
+            'extend' => $result
         ];
         return $data;
     }
 
     /**
      * 获取路径相关信息
-     * @param string|null $key       文件唯一标识
-     * @param string|null $extension 后缀名
+     * @param string|null $key 文件唯一标识
+     * @param string|null $ext 后缀名
      * @return array [路径标识, 保存文件名, 保存路径]
      */
-    protected function getPathInfo(string $key = null, string $extension = null): array
+    protected function getPathInfo(string $key = null, string $ext = null): array
     {
         if (is_null($key)) {
             $sdir = $this->tempDirPath;
-            if (empty($extension)) {
+            if (empty($ext)) {
                 $name = uniqid();
             } else {
-                $name = uniqid() . '.' . $extension;
+                $name = uniqid() . '.' . $ext;
             }
             $key = $sdir . '/' . $name;
         } else {
