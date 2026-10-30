@@ -35,8 +35,18 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null)
     {
         $defaultCfg = [
+            'tempDir' => './temp',
+            'private' => false,
+            'version' => 'v1',
         ];
         $this->cfg = array_merge($defaultCfg, $cfg);
+        $this->providerCfg = $providerCfg;
+        $this->tempDirPath = $tempDir ?? $this->cfg['tempDir'];
+        $this->cfg['tempDir'] = $this->tempDirPath;
+        $this->cfg['uploadToken'] = array_merge([
+            'cacheKey' => 'qiniu-upload-token-' . hash('sha256', ($cfg['accessKey'] ?? '') . ':' . ($cfg['bucket'] ?? '')),
+            'expires'  => 3600,
+        ], $cfg['uploadToken'] ?? []);
         $cacheHandler = $this->cfg['cache_handler'] ?? 'File';
         $cacheConfig = $this->cfg['cache_config'] ?? [];
         $this->cache = CacheFactory::create($cacheHandler, $cacheConfig);
@@ -83,14 +93,14 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
         $origPath = realpath($filePath);
         $size = filesize($filePath);
         $orig_file = new File($filePath);
-        $extension = strtolower($orig_file->getExtension());
+        $ext = strtolower($orig_file->getExtension());
         $mime = $orig_file->getMime();
         unset($orig_file);
-        $this->checkExt($extension);
+        $this->checkExt($ext);
 
         if (is_null($key)) {
-            if ($extension) {
-                $name = uniqid() . '.' . $extension;
+            if ($ext) {
+                $name = uniqid() . '.' . $ext;
             } else {
                 $name = uniqid();
             }
@@ -99,7 +109,7 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
         }
         $path = $key;
         $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $key;
+        $url = rtrim($domain, '/') . '/' . ltrim($key, '/');
         $sha1 = hash_file('sha1', $filePath);
         $name = basename($key);
         $dir = dirname($key);
@@ -108,18 +118,18 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
         $uploadMgr = new UploadManager();
         [$ret, $err] = $uploadMgr->putFile($token, $key, $filePath, null, 'application/octet-stream', false, null, $this->cfg['version']);
         if ($err !== null) {
-            throw new FileException($err);
+            throw new FileException($filePath, (string)$err);
         }
 
         $data = [
-            'key'       => $key,
-            'name'      => $name,
-            'path'      => $path,
-            'url'       => $url,
-            'size'      => $size,
-            'mime'      => $mime,
-            'extension' => $extension,
-            'sha1'      => $sha1,
+            'key'  => $key,
+            'name' => $name,
+            'path' => $path,
+            'url'  => $url,
+            'size' => $size,
+            'mime' => $mime,
+            'ext'  => $ext,
+            'sha1' => $sha1,
 
             'dir'       => $dir,
             'orig_name' => $origName,
@@ -140,58 +150,72 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
      */
     public function uploadBase64(string $base64Centent, ?string $key = null): array
     {
-        if (!preg_match('/^(data:\s*(\w+\/\w+);base64,)/', $base64Centent, $matches)) {
+        if (!preg_match('/^(data:\s*([a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+);base64,)/i', $base64Centent, $matches)) {
             throw new FileException('没有找到要上传的文件');
         }
 
         $mime = strtolower($matches[2]);
-        $extension = MIME::getExtensionByMime($mime);
-        if (empty($extension)) {
+        $ext = MIME::getExtensionByMime($mime);
+        if (empty($ext)) {
             throw new FileException('无法识别上传的文件后缀名');
         }
 
-        $name = uniqid() . '.' . $extension;
+        $this->checkExt($ext);
+        $content = base64_decode(substr($base64Centent, strlen($matches[1])), true);
+        if ($content === false) {
+            throw new FileException('', '无效的base64内容');
+        }
+
+        $name = uniqid() . '.' . $ext;
         $save_file = $this->cfg['tempDir'] . DIRECTORY_SEPARATOR . $name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
-        $fso = new File($save_file, 'w');
-        $result = $fso->fwrite(base64_decode(str_replace($matches[1], '', $base64Centent)));
-        $fso->clearstatcache();
-        $size = $fso->getSize();
+        try {
+            $fso = new File($save_file, 'w');
+            $result = $fso->fwrite($content);
+            $fso->clearstatcache();
+            $size = $fso->getSize();
 
-        if ($result === false) {
-            throw new FileException('上传失败');
+            if ($result === false) {
+                throw new FileException('上传失败');
+            }
+
+            if (is_null($key)) {
+                $sdir = $this->getSaveDir();
+                $key = $sdir . '/' . $name;
+            }
+            $path = $key;
+            $domain = $this->cfg['domain'];
+            $url = rtrim($domain, '/') . '/' . ltrim($key, '/');
+
+            unset($fso);
+            $name = basename($key);
+            $token = $this->getUploadToken();
+            $uploadMgr = new UploadManager();
+            [$ret, $err] = $uploadMgr->putFile($token, $key, $save_file, null, 'application/octet-stream', false, null, $this->cfg['version']);
+            if ($err !== null) {
+                throw new FileException($save_file, (string)$err);
+            }
+
+            $sha1 = hash_file('sha1', $save_file);
+            $data = [
+                'key'    => $key,
+                'name'   => $name,
+                'path'   => $path,
+                'url'    => $url,
+                'size'   => $size,
+                'mime'   => $mime,
+                'ext'    => $ext,
+                'sha1'   => $sha1,
+                'extend' => [
+                    'ret' => $ret,
+                ]
+            ];
+            return $data;
+        } finally {
+            unset($fso);
+            if (is_file($save_file)) {
+                unlink($save_file);
+            }
         }
-
-        if (is_null($key)) {
-            $sdir = $this->getSaveDir();
-            $key = $sdir . '/' . $name;
-        }
-        $path = $key;
-        $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $key;
-
-        $token = $this->getUploadToken();
-        $uploadMgr = new UploadManager();
-        [$ret, $err] = $uploadMgr->putFile($token, $key, $save_file, null, 'application/octet-stream', false, null, $this->cfg['version']);
-        if ($err !== null) {
-            throw new FileException($err);
-        }
-
-        $sha1 = hash_file('sha1', $save_file);
-        $data = [
-            'key'       => $key,
-            'name'      => $name,
-            'path'      => $path,
-            'url'       => $url,
-            'size'      => $size,
-            'mime'      => $mime,
-            'extension' => $extension,
-            'sha1'      => $sha1,
-            'extend'    => [
-                'ret' => $ret,
-            ]
-        ];
-        unlink($save_file);
-        return $data;
     }
 
     /**
@@ -203,9 +227,9 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
     public function uploadRemote(string $url, ?string $key = null): array
     {
         $origUrl = $url;
-        $extension = pathinfo($origUrl, PATHINFO_EXTENSION);
-        if ($extension) {
-            $save_name = uniqid() . '.' . $extension;
+        $ext = pathinfo(parse_url($origUrl, PHP_URL_PATH) ?? '', PATHINFO_EXTENSION);
+        if ($ext) {
+            $save_name = uniqid() . '.' . $ext;
         } else {
             $save_name = uniqid();
         }
@@ -216,25 +240,33 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
             throw new FileException('获取远程文件时发生错误：');
         }
 
-        $fso = new File($save_file, 'w');
-        $result = $fso->fwrite($content);
-        if ($result === false) {
-            throw new FileException('上传失败');
+        try {
+            $fso = new File($save_file, 'w');
+            $result = $fso->fwrite($content);
+            if ($result === false) {
+                throw new FileException('上传失败');
+            }
+            unset($fso);
+            $data = $this->uploadFile($save_file, $key);
+            unset($data['orig_name']);
+            $data['orig_url'] = $origUrl;
+            return $data;
+        } finally {
+            unset($fso);
+            if (is_file($save_file)) {
+                unlink($save_file);
+            }
         }
-        $data = $this->uploadFile($save_file, $key);
-        unlink($save_file);  // 已上传到OSS，删除本地文件
-        unset($data['orig_name']);
-        $data['orig_url'] = $origUrl;
-        return $data;
     }
 
     /**
      * 分块上传：初始化
      * @param int|null    $blobCount 分片总数量，建议指定该参数。
+     * @param string|null $key       文件路径标识
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return string 唯一识别码，用于后续的分块上传。
      */
-    public function uploadLargeInit(?int $blobCount = null, ?string $uuid = null): string
+    public function uploadLargeInit(?int $blobCount = null, ?string $key = null, ?string $uuid = null): string
     {
         if (is_null($uuid)) {
             $uuid = uniqid();
@@ -243,8 +275,9 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
         if ($info) {  // 存在旧的分片信息则删除重新初始化。
             if (isset($info['parts'])) {
                 foreach ($info['parts'] as $part) {
-                    if (is_file($part)) {
-                        unlink($part);
+                    $tempFile = $this->tempDirPath . '/' . $part;
+                    if (is_file($tempFile)) {
+                        unlink($tempFile);
                     }
                 }
             }
@@ -253,7 +286,8 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
         $info = [
             'uuid'      => $uuid,
             'blobCount' => $blobCount,
-            'parts'     => (object)[],
+            'key'       => $key,
+            'parts'     => [],
         ];
         $this->savePartUploadInfo($uuid, $info);
         return $uuid;
@@ -282,7 +316,7 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
         $tempFile = $this->tempDirPath . '/' . $tempfileName;
         $fso = new File($tempFile, 'wb');
         $result = $fso->fwrite($content);
-        if (!$result) {
+        if ($result === false || $result !== strlen($content)) {
             throw new FileException($tempFile, '上传失败');
         }
         unset($fso);
@@ -293,11 +327,12 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
 
     /**
      * 分块上传：完成上传
-     * @param string      $uuid      唯一识别码
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string      $uuid 唯一识别码
+     * @param string|null $key  文件路径标识
+     * @param string|null $ext  后缀名，不指定则根据MIME进行猜测。
      * @return array 返回保存文件的相关信息
      */
-    public function uploadLargeComplete(string $uuid, ?string $extension = null): array
+    public function uploadLargeComplete(string $uuid, ?string $key = null, ?string $ext = null): array
     {
         $info = $this->getPartUploadInfo($uuid);
         self::assertHasKey($info, 'parts');
@@ -307,40 +342,57 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
             }
         }
 
-        [$key, $name, $targetPath] = $this->getPathInfo(null, $extension);
-
-        // 按序合并
-        $fso = new File($targetPath, 'a+b');
-        for ($i = 0; $i < count($info['parts']); $i++) {
-            $tempFile = $this->tempDirPath . '/' . $info['parts']["BLOB-{$i}"];
-            if (!is_file($tempFile)) {
+        $extension = $ext;
+        $parts = $info['parts'];
+        if (!$parts) {
+            throw new RuntimeException('没有可合并的分片！');
+        }
+        for ($i = 0; $i < count($parts); $i++) {
+            if (!isset($parts["BLOB-{$i}"]) || !is_file($this->tempDirPath . '/' . $parts["BLOB-{$i}"])) {
                 throw new RuntimeException('分片文件不存在！');
             }
-            $fso->fwrite(file_get_contents($tempFile));
         }
-        if (!$extension) {
-            $extension = $fso->getExtension();
-            if ($extension) {
-                $key .= "." . $extension;
-                $name .= "." . $extension;
-                $targetPath .= "." . $extension;
-                $fso->rename($name);
+
+        $key = $key ?? ($info['key'] ?? null);
+        $targetPath = tempnam($this->tempDirPath, 'qiniu_');
+        if ($targetPath === false) {
+            throw new RuntimeException('无法创建合并临时文件！');
+        }
+        try {
+            // 每次重新合并，上传失败重试时不会重复追加分片。
+            $fso = new File($targetPath, 'wb');
+            for ($i = 0; $i < count($parts); $i++) {
+                $tempFile = $this->tempDirPath . '/' . $parts["BLOB-{$i}"];
+                $content = file_get_contents($tempFile);
+                if ($content === false || $fso->fwrite($content) !== strlen($content)) {
+                    throw new RuntimeException('合并分片失败！');
+                }
             }
-        }
-        $mime = $fso->getMime();
-        unset($fso);
+            unset($fso);
+            $tempFile = new File($targetPath);
+            $mime = $tempFile->getMime();
+            $extension = $extension ?: pathinfo($key ?? '', PATHINFO_EXTENSION);
+            if (!$extension) {
+                $extension = MIME::getExtensionByMime($mime) ?: '';
+            }
+            $this->checkExt($extension);
+            $key = $key ?? $this->generateKey(null, $extension);
+            $name = basename($key);
+            $size = $tempFile->getSize();
+            $sha1 = hash_file('sha1', $targetPath);
+            unset($tempFile);
+            $path = $key;
+            $url = rtrim($this->cfg['domain'], '/') . '/' . ltrim($key, '/');
 
-        $size = filesize($targetPath);
-        $sha1 = hash_file('sha1', $targetPath);
-        $path = str_replace(realpath($this->cfg['rootPath']), '', $targetPath);
-        $url = $this->cfg['domain'] . $path;
-
-        // 上传到七牛云
-        $token = $this->getUploadToken();
-        $uploadMgr = new UploadManager();
-        [$ret, $err] = $uploadMgr->putFile($token, $key, $targetPath, null, 'application/octet-stream', false, null, $this->cfg['version']);
-        if ($err !== null) {
-            throw new FileException($err);
+            $token = $this->getUploadToken();
+            $uploadMgr = new UploadManager();
+            [$ret, $err] = $uploadMgr->putFile($token, $key, $targetPath, null, $mime, false, null, $this->cfg['version']);
+            if ($err !== null) {
+                throw new FileException($targetPath, (string)$err);
+            }
+        } finally {
+            unset($fso, $tempFile);
+            unlink($targetPath);
         }
 
         // 删除相关临时文件
@@ -349,7 +401,6 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
             unlink($tempFile);
         }
         $this->deletPartUploadInfo($uuid);
-        unlink($targetPath);
 
         return [
             'key'       => $key,                            // 文件路径标识
@@ -363,7 +414,7 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
             'uuid'      => $uuid,
 
             'full_path' => $targetPath,  // 本机完整路径
-            'extend' => [
+            'extend'    => [
                 'ret' => $ret,
             ]
         ];
@@ -390,15 +441,15 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
      * @param string      $name      文件域表单名
      * @param int         $blobIndex 当前分片下标。-1表示初始化，-2表示完成上传。
      * @param int|null    $blobCount 分片总数量，建议指定该参数。
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $ext       后缀名，不指定则根据MIME进行猜测。
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return array
      */
-    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $extension = null, ?string $uuid = null): array
+    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $ext = null, ?string $uuid = null): array
     {
         // 特殊值-1：初始化
         if ($blobIndex == -1) {
-            $uuid = $this->uploadLargeInit($blobCount, $uuid);
+            $uuid = $this->uploadLargeInit($blobCount, null, $uuid);
             $info = $this->getPartUploadInfo($uuid);
             return $info;
         }
@@ -408,7 +459,7 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
             if (!$uuid) {
                 throw new RuntimeException('请指定参数uuid。');
             }
-            $info = $this->uploadLargeComplete($uuid, $extension);
+            $info = $this->uploadLargeComplete($uuid, null, $ext);
             return $info;
         }
 
@@ -418,7 +469,7 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
         }
         $info = $this->getPartUploadInfo($uuid);
         if (!$info) {
-            $this->uploadLargeInit($blobCount, $uuid);
+            $this->uploadLargeInit($blobCount, null, $uuid);
         }
 
         // 上传块
@@ -430,36 +481,39 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
         }
 
         // 完成上传
-        $info = $this->uploadLargeComplete($uuid, $extension);
+        $info = $this->uploadLargeComplete($uuid, null, $ext);
         return $info;
     }
 
     /**
      * 上传多个分块并合并成文件
-     * @param array       $parts     分块数组
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
-     * @param string|null $uuid      唯一识别码，不指定则自动生成。
+     * @param array       $parts 分块数组
+     * @param string|null $ext   后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $uuid  唯一识别码，不指定则自动生成。
      * @return array
      */
-    public function uploadParts(array $parts, ?string $extension = null, ?string $uuid = null): array
+    public function uploadParts(array $parts, ?string $ext = null, ?string $uuid = null): array
     {
         $blobCount = count($parts);
-        $uuid = $this->uploadLargeInit($blobCount, $uuid);
+        $uuid = $this->uploadLargeInit($blobCount, null, $uuid);
         foreach ($parts as $blobIndex => $content) {
             $this->uploadLargePart($uuid, $content, $blobIndex);
         }
-        $info = $this->uploadLargeComplete($uuid, $extension);
+        $info = $this->uploadLargeComplete($uuid, null, $ext);
         return $info;
     }
 
     /**
      * 返回已授权的预览URL
-     * @param string $url     原URL
+     * @param string $key     文件路径标识或完整URL
      * @param int    $expires 有效期(秒)，为0表示永久有效
      * @return string
      */
-    public function getAuthorizedUrl(string $url, int $expires = 0): string
+    public function getAuthorizedUrl(string $key, int $expires = 0): string
     {
+        $url = preg_match('#^https?://#i', $key)
+            ? $key
+            : rtrim($this->cfg['domain'], '/') . '/' . ltrim($key, '/');
         if ($expires == 0) {
             $expires = 100 * 365 * 24 * 3600;
         }
@@ -487,11 +541,15 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
         if (is_null($mime)) {
             throw new FileException($origName, '无法识别文件！');
         }
-        $extension = MIME::getExtensionByMime($mime);
-        if (empty($extension)) {
+        $ext = MIME::getExtensionByMime($mime);
+        if (empty($ext)) {
             throw new FileException($origName, '禁止上传无后缀名的文件');
         }
-        $this->checkExt($extension);
+        $this->checkExt($ext);
+
+        if (is_null($key)) {
+            $key = $this->generateKey(null, $ext);
+        }
 
         $size = $uploadFile->getSize();
         $tmpName = $uploadFile->getTmpName();
@@ -503,21 +561,23 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
         $uploadMgr = new UploadManager();
         [$ret, $err] = $uploadMgr->putFile($token, $key, $tmpName, null, 'application/octet-stream', false, null, $this->cfg['version']);
         if ($err !== null) {
-            throw new FileException($err);
+            throw new FileException($tmpName, (string)$err);
         }
 
-        unlink($tmpName);
-        $path = str_replace(realpath($this->cfg['rootPath']), '', $key);
-        $url = $this->cfg['domain'] . $path;
+        if (!$uploadFile->isForTest()) {
+            unlink($tmpName);
+        }
+        $path = $key;
+        $url = rtrim($this->cfg['domain'], '/') . '/' . ltrim($key, '/');
         $data = [
-            'key'       => $key,                            // 文件路径标识
-            'name'      => $name,                           // 保存文件名
-            'path'      => $path,                           // WEB路径
-            'url'       => $url,                            // 完整URL
-            'size'      => $size,                           // 文件大小
-            'mime'      => $mime,                           // MIME类型
-            'extension' => $extension,                      // 后缀名
-            'sha1'      => $sha1,                           // 文件SHA1
+            'key'  => $key,                            // 文件路径标识
+            'name' => $name,                           // 保存文件名
+            'path' => $path,                           // WEB路径
+            'url'  => $url,                            // 完整URL
+            'size' => $size,                           // 文件大小
+            'mime' => $mime,                           // MIME类型
+            'ext'  => $ext,                            // 后缀名
+            'sha1' => $sha1,                           // 文件SHA1
 
             'dir'       => $dir,         // 生成路径
             'orig_name' => $origName,    // 原文件名
@@ -539,26 +599,27 @@ class QiNiu extends UploadHandlerAbstract implements UploadHandler
         $key = $this->cfg['uploadToken']['cacheKey'];
         if (!$this->cache->has($key)) {
             $auth = new Auth($this->cfg['accessKey'], $this->cfg['secretKey']);
-            $token = $auth->uploadToken($this->cfg['bucket']);
-            $this->cache->set($key, $token, $this->cfg['uploadToken']['expires'] - 600);  // 提前10分钟失效，提高稳定性
+            $expires = max(1, (int)$this->cfg['uploadToken']['expires']);
+            $token = $auth->uploadToken($this->cfg['bucket'], null, $expires);
+            $this->cache->set($key, $token, max(1, $expires - 600));  // 提前10分钟失效，提高稳定性
         }
         return $this->cache->get($key);
     }
 
     /**
      * 获取路径相关信息
-     * @param string|null $key       文件唯一标识
-     * @param string|null $extension 后缀名
+     * @param string|null $key 文件唯一标识
+     * @param string|null $ext 后缀名
      * @return array [路径标识, 保存文件名, 保存路径]
      */
-    protected function getPathInfo(string $key = null, string $extension = null): array
+    protected function getPathInfo(string $key = null, string $ext = null): array
     {
         if (is_null($key)) {
             $sdir = $this->tempDirPath;
-            if (empty($extension)) {
+            if (empty($ext)) {
                 $name = uniqid();
             } else {
-                $name = uniqid() . '.' . $extension;
+                $name = uniqid() . '.' . $ext;
             }
             $key = $sdir . '/' . $name;
         } else {
