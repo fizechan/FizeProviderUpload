@@ -31,8 +31,13 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
     public function __construct(array $cfg = [], array $providerCfg = [], string $tempDir = null)
     {
         $defaultCfg = [
+            'tempDir' => './temp',
+            'private' => false,
         ];
         $this->cfg = array_merge($defaultCfg, $cfg);
+        $this->providerCfg = $providerCfg;
+        $this->tempDirPath = $tempDir ?? $this->cfg['tempDir'];
+        $this->cfg['tempDir'] = $this->tempDirPath;
         $this->obsClient = new ObsClient([
             'key'      => $this->cfg['key'],
             'secret'   => $this->cfg['secret'],
@@ -45,7 +50,9 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
      */
     public function __destruct()
     {
-        $this->obsClient->close();
+        if ($this->obsClient) {
+            $this->obsClient->close();
+        }
     }
 
     /**
@@ -89,14 +96,14 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
         $origPath = realpath($filePath);
         $size = filesize($filePath);
         $orig_file = new File($filePath);
-        $extension = strtolower($orig_file->getExtension());
+        $ext = strtolower($orig_file->getExtension());
         $mime = $orig_file->getMime();
         unset($orig_file);
-        $this->checkExt($extension);
+        $this->checkExt($ext);
 
         if (is_null($key)) {
-            if ($extension) {
-                $name = uniqid() . '.' . $extension;
+            if ($ext) {
+                $name = uniqid() . '.' . $ext;
             } else {
                 $name = uniqid();
             }
@@ -105,7 +112,7 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
         }
         $path = $key;
         $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $key;
+        $url = rtrim($domain, '/') . '/' . ltrim($key, '/');
         $sha1 = hash_file('sha1', $filePath);
         $name = basename($key);
         $dir = dirname($key);
@@ -117,19 +124,19 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
         ]);
 
         $data = [
-            'key'       => $key,
-            'name'      => $name,
-            'path'      => $path,
-            'url'       => $url,
-            'size'      => $size,
-            'mime'      => $mime,
-            'extension' => $extension,
-            'sha1'      => $sha1,
+            'key'  => $key,
+            'name' => $name,
+            'path' => $path,
+            'url'  => $url,
+            'size' => $size,
+            'mime' => $mime,
+            'ext'  => $ext,
+            'sha1' => $sha1,
 
             'dir'       => $dir,
             'orig_name' => $origName,
             'orig_path' => $origPath,  // 原文件路径
-            'extend' => $resp
+            'extend'    => $resp
         ];
         return $data;
     }
@@ -142,56 +149,68 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
      */
     public function uploadBase64(string $base64Centent, ?string $key = null): array
     {
-        if (!preg_match('/^(data:\s*(\w+\/\w+);base64,)/', $base64Centent, $matches)) {
+        if (!preg_match('/^(data:\s*([a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+);base64,)/i', $base64Centent, $matches)) {
             throw new FileException('没有找到要上传的文件');
         }
 
         $mime = strtolower($matches[2]);
-        $extension = MIME::getExtensionByMime($mime);
-        if (empty($extension)) {
+        $ext = MIME::getExtensionByMime($mime);
+        if (empty($ext)) {
             throw new FileException('无法识别上传的文件后缀名');
         }
 
-        $name = uniqid() . '.' . $extension;
+        $this->checkExt($ext);
+        $content = base64_decode(substr($base64Centent, strlen($matches[1])), true);
+        if ($content === false) {
+            throw new FileException('', '无效的base64内容');
+        }
+
+        $name = uniqid() . '.' . $ext;
         $save_file = $this->cfg['tempDir'] . DIRECTORY_SEPARATOR . $name;  // 因为会上传到OSS，故放在临时文件夹中待后面上传后删除
-        $fso = new File($save_file, 'w');
-        $result = $fso->fwrite(base64_decode(str_replace($matches[1], '', $base64Centent)));
-        $fso->clearstatcache();
-        $size = $fso->getSize();
+        try {
+            $fso = new File($save_file, 'w');
+            $result = $fso->fwrite($content);
+            $fso->clearstatcache();
+            $size = $fso->getSize();
 
-        if ($result === false) {
-            throw new FileException('上传失败');
+            if ($result === false) {
+                throw new FileException('上传失败');
+            }
+
+            if (is_null($key)) {
+                $sdir = $this->getSaveDir();
+                $key = $sdir . '/' . $name;
+            }
+            $path = $key;
+            $domain = $this->cfg['domain'];
+            $url = rtrim($domain, '/') . '/' . ltrim($key, '/');
+
+            unset($fso);
+            $name = basename($key);
+            $resp = $this->obsClient->putObject([
+                'Bucket'     => $this->cfg['bucket'],
+                'Key'        => $key,
+                'SourceFile' => $save_file,
+            ]);
+            $sha1 = hash_file('sha1', $save_file);
+            $data = [
+                'key'    => $key,
+                'name'   => $name,
+                'path'   => $path,
+                'url'    => $url,
+                'size'   => $size,
+                'mime'   => $mime,
+                'ext'    => $ext,
+                'sha1'   => $sha1,
+                'extend' => $resp
+            ];
+            return $data;
+        } finally {
+            unset($fso);
+            if (is_file($save_file)) {
+                unlink($save_file);
+            }
         }
-
-        if (is_null($key)) {
-            $sdir = $this->getSaveDir();
-            $key = $sdir . '/' . $name;
-        }
-        $path = $key;
-        $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $key;
-        $sha1 = hash_file('sha1', $save_file);
-
-        $resp = $this->obsClient->putObject([
-            'Bucket'     => $this->cfg['bucket'],
-            'Key'        => $key,
-            'SourceFile' => $save_file
-        ]);
-
-        $data = [
-            'key'       => $key,
-            'name'      => $name,
-            'path'      => $path,
-            'url'       => $url,
-            'size'      => $size,
-            'mime'      => $mime,
-            'extension' => $extension,
-            'sha1'      => $sha1,
-
-            'extend'    => $resp
-        ];
-        unlink($save_file);
-        return $data;
     }
 
     /**
@@ -203,9 +222,9 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
     public function uploadRemote(string $url, ?string $key = null): array
     {
         $origUrl = $url;
-        $extension = pathinfo($origUrl, PATHINFO_EXTENSION);
-        if ($extension) {
-            $save_name = uniqid() . '.' . $extension;
+        $ext = pathinfo(parse_url($origUrl, PHP_URL_PATH) ?? '', PATHINFO_EXTENSION);
+        if ($ext) {
+            $save_name = uniqid() . '.' . $ext;
         } else {
             $save_name = uniqid();
         }
@@ -216,50 +235,51 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
             throw new FileException('获取远程文件时发生错误：');
         }
 
-        $fso = new File($save_file, 'w');
-        $result = $fso->fwrite($content);
-        if ($result === false) {
-            throw new FileException('上传失败');
+        try {
+            $fso = new File($save_file, 'w');
+            $result = $fso->fwrite($content);
+            if ($result === false) {
+                throw new FileException('上传失败');
+            }
+            unset($fso);
+            $data = $this->uploadFile($save_file, $key);
+            unset($data['orig_name']);
+            $data['orig_url'] = $origUrl;
+            return $data;
+        } finally {
+            unset($fso);
+            if (is_file($save_file)) {
+                unlink($save_file);
+            }
         }
-        $data = $this->uploadFile($save_file, $key);
-        unlink($save_file);  // 已上传到OSS，删除本地文件
-        unset($data['orig_name']);
-        $data['orig_url'] = $origUrl;
-        return $data;
     }
 
     /**
      * 分块上传：初始化
      * @param int|null    $blobCount 分片总数量，建议指定该参数。
+     * @param string|null $key       文件路径标识
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return string 唯一识别码，用于后续的分块上传。
      */
-    public function uploadLargeInit(?int $blobCount = null, ?string $uuid = null): string
+    public function uploadLargeInit(?int $blobCount = null, ?string $key = null, ?string $uuid = null): string
     {
-        if (is_null($uuid)) {
-            $uuid = uniqid();
+        $uuid = $uuid ?? uniqid();
+        if ($this->getPartUploadInfo($uuid)) {
+            $this->uploadLargeAbort($uuid);
         }
-        $info = $this->getPartUploadInfo($uuid);
-        if ($info) {  // 存在旧的分片信息则删除重新初始化。
-            $this->obsClient->abortMultipartUpload([
-                'Bucket'   => $this->cfg['bucket'],
-                'Key'      => $key,
-                'UploadId' => $info['UploadId'],
-            ]);
-            $this->deletPartUploadInfo($uuid);
-        }
-
         $resp = $this->obsClient->initiateMultipartUpload([
             'Bucket' => $this->cfg['bucket'],
-            'Key'    => $file_key
+            'Key'    => $key ?? $uuid,
         ]);
-
-        $info = [
+        $this->savePartUploadInfo($uuid, [
             'uuid'      => $uuid,
             'blobCount' => $blobCount,
-            'uploadId'  => $resp['uploadId'],
-        ];
-        $this->savePartUploadInfo($uuid, $info);
+            'key'       => $key ?? $uuid,
+            'autoKey'   => is_null($key),
+            'uploadId'  => $resp['UploadId'],
+            'parts'     => [],
+            'ETags'     => [],
+        ]);
         return $uuid;
     }
 
@@ -273,78 +293,129 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
     public function uploadLargePart(string $uuid, string $content, ?int $blobIndex = null): array
     {
         $info = $this->getPartUploadInfo($uuid);
-        $this->assertHasKey($info, 'UploadId');
-        if (isset($info['ETags'])) {
-            $partNumber = (end($info['ETags']))['PartNumber'] + 1;
-        } else {
-            $partNumber = 1;
+        $this->assertHasKey($info, 'uploadId');
+        $blobIndex = $blobIndex ?? count($info['parts']);
+        if ($blobIndex < 0 || ($info['blobCount'] !== null && $blobIndex >= $info['blobCount'])) {
+            throw new RuntimeException('分片下标超出范围！');
         }
-
-        $resp = $this->obsClient->uploadPart([
-            'Bucket'     => $this->cfg['bucket'],
-            'Key'        => $file_key,
-            'UploadId'   => $info['UploadId'],
-            'PartNumber' => $partNumber,
-            'Body'       => $content
-        ]);
-
-        $blockStatus = ['ETag' => $resp['ETag'], 'PartNumber' => $partNumber];
-        $etags = $info['ETags'] ?? [];
-        array_push($etags, $blockStatus);
-        $this->savePartUploadInfo($file_key, ['ETags' => $etags]);
+        $tempName = uniqid('obs_part_', true) . '.tmp';
+        $tempPath = $this->tempDirPath . '/' . $tempName;
+        $saved = false;
+        try {
+            $file = new File($tempPath, 'wb');
+            if ($file->fwrite($content) !== strlen($content)) {
+                throw new FileException($tempPath, '上传失败');
+            }
+            unset($file);
+            $resp = $this->obsClient->uploadPart([
+                'Bucket'     => $this->cfg['bucket'],
+                'Key'        => $info['key'],
+                'UploadId'   => $info['uploadId'],
+                'PartNumber' => $blobIndex + 1,
+                'Body'       => $content,
+            ]);
+            $previous = $info['parts']["BLOB-{$blobIndex}"] ?? null;
+            $info['parts']["BLOB-{$blobIndex}"] = $tempName;
+            $info['ETags']["BLOB-{$blobIndex}"] = ['ETag' => $resp['ETag'], 'PartNumber' => $blobIndex + 1];
+            $this->savePartUploadInfo($uuid, $info);
+            $saved = true;
+            if ($previous && is_file($this->tempDirPath . '/' . $previous)) {
+                unlink($this->tempDirPath . '/' . $previous);
+            }
+        } finally {
+            unset($file);
+            if (!$saved && is_file($tempPath)) {
+                unlink($tempPath);
+            }
+        }
+        return $info;
     }
 
     /**
      * 分块上传：完成上传
-     * @param string      $uuid      唯一识别码
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string      $uuid 唯一识别码
+     * @param string|null $key  文件路径标识
+     * @param string|null $ext  后缀名，不指定则根据MIME进行猜测。
      * @return array 返回保存文件的相关信息
      */
-    public function uploadLargeComplete(string $uuid, ?string $extension = null): array
+    public function uploadLargeComplete(string $uuid, ?string $key = null, ?string $ext = null): array
     {
         $info = $this->getPartUploadInfo($uuid);
         $this->assertHasKey($info, 'uploadId');
-        $this->assertHasKey($info, 'ETags');
-
-        $result = $this->obsClient->completeMultipartUpload([
-            'Bucket'   => $this->cfg['bucket'],
-            'Key'      => $file_key,
-            'UploadId' => $info['UploadId'],
-            'Parts'    => $info['ETags'],
-        ]);
-
-        $temp_file = $this->cfg['tempDir'] . '/' . $info['tempName'];
-        $key = $info['key'];
-        $name = basename($temp_file);
-        $tempFile = new File($temp_file);
-        $extension = pathinfo($key, PATHINFO_EXTENSION);
-        if (empty($extension)) {
-            $extension = $tempFile->getExtension();
+        $this->assertHasKey($info, 'parts');
+        $parts = $info['parts'];
+        if (!$parts || ($info['blobCount'] !== null && count($parts) !== $info['blobCount'])) {
+            throw new RuntimeException('分片未全部上传！');
         }
-
-        $path = $key;
-        $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $key;
-
-        $size = $tempFile->getSize();
-        $mime = $tempFile->getMime();
-        $sha1 = hash_file('sha1', $temp_file);
-
-        unlink($temp_file);
+        $etags = [];
+        for ($i = 0; $i < count($parts); $i++) {
+            if (!isset($parts["BLOB-{$i}"], $info['ETags']["BLOB-{$i}"]) || !is_file($this->tempDirPath . '/' . $parts["BLOB-{$i}"])) {
+                throw new RuntimeException('分片文件不存在！');
+            }
+            $etags[] = $info['ETags']["BLOB-{$i}"];
+        }
+        $tempPath = tempnam($this->tempDirPath, 'obs_');
+        if ($tempPath === false) {
+            throw new RuntimeException('无法创建合并临时文件！');
+        }
+        try {
+            $file = new File($tempPath, 'wb');
+            // 本地元数据必须与OBS按分片序号合并的内容一致。
+            for ($index = 0; $index < count($parts); $index++) {
+                $content = file_get_contents($this->tempDirPath . '/' . $parts["BLOB-{$index}"]);
+                if ($content === false || $file->fwrite($content) !== strlen($content)) {
+                    throw new RuntimeException('合并分片失败！');
+                }
+            }
+            unset($file);
+            $file = new File($tempPath);
+            $mime = $file->getMime();
+            $ext = $ext ?: pathinfo($key ?? ($info['autoKey'] ? '' : $info['key']), PATHINFO_EXTENSION);
+            $ext = $ext ?: (MIME::getExtensionByMime($mime) ?: '');
+            $this->checkExt($ext);
+            $key = $key ?? ($info['autoKey'] ? $this->generateKey(null, $ext) : $info['key']);
+            $name = basename($key);
+            $size = $file->getSize();
+            $sha1 = hash_file('sha1', $tempPath);
+            unset($file);
+            if (empty($info['completed'])) {
+                $result = $this->obsClient->completeMultipartUpload([
+                    'Bucket'   => $this->cfg['bucket'],
+                    'Key'      => $info['key'],
+                    'UploadId' => $info['uploadId'],
+                    'Parts'    => $etags,
+                ]);
+                $this->savePartUploadInfo($uuid, ['completed' => true]);
+            } else {
+                $result = [];
+            }
+            if ($key !== $info['key']) {
+                $result = $this->obsClient->copyObject([
+                    'Bucket'     => $this->cfg['bucket'],
+                    'Key'        => $key,
+                    'CopySource' => $this->cfg['bucket'] . '/' . $info['key'],
+                ]);
+                $this->obsClient->deleteObject(['Bucket' => $this->cfg['bucket'], 'Key' => $info['key']]);
+            }
+        } finally {
+            unset($file);
+            unlink($tempPath);
+        }
+        foreach ($parts as $tempName) {
+            unlink($this->tempDirPath . '/' . $tempName);
+        }
         $this->deletPartUploadInfo($uuid);
-
         return [
-            'key'       => $key,                            // 文件路径标识
-            'name'      => $name,                           // 保存文件名
-            'path'      => $path,                           // WEB路径
-            'url'       => $url,                            // 完整URL
-            'size'      => $size,                           // 文件大小
-            'mime'      => $mime,                           // MIME类型
-            'extension' => $extension,                      // 后缀名
-            'sha1'      => $sha1,                           // 文件SHA1
-            'uuid'      => $uuid,
-
-            'extend'   => $result
+            'key'    => $key,
+            'name'   => $name,
+            'path'   => $key,
+            'url'    => rtrim($this->cfg['domain'], '/') . '/' . ltrim($key, '/'),
+            'size'   => $size,
+            'mime'   => $mime,
+            'ext'    => $ext,
+            'sha1'   => $sha1,
+            'uuid'   => $uuid,
+            'extend' => $result,
         ];
     }
 
@@ -354,16 +425,23 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
      */
     public function uploadLargeAbort(string $uuid)
     {
-        $info = $this->getPartUploadInfo($file_key);
-        $this->assertHasKey($info, 'UploadId');
-
-        $this->obsClient->abortMultipartUpload([
-            'Bucket'   => $this->cfg['bucket'],
-            'Key'      => $file_key,
-            'UploadId' => $info['UploadId'],
-        ]);
-        $temp_file = $this->cfg['tempDir'] . '/' . $info['tempName'];
-        unlink($temp_file);
+        $info = $this->getPartUploadInfo($uuid);
+        $this->assertHasKey($info, 'uploadId');
+        if (empty($info['completed'])) {
+            $this->obsClient->abortMultipartUpload([
+                'Bucket'   => $this->cfg['bucket'],
+                'Key'      => $info['key'],
+                'UploadId' => $info['uploadId'],
+            ]);
+        } else {
+            $this->obsClient->deleteObject(['Bucket' => $this->cfg['bucket'], 'Key' => $info['key']]);
+        }
+        foreach ($info['parts'] as $tempName) {
+            $tempPath = $this->tempDirPath . '/' . $tempName;
+            if (is_file($tempPath)) {
+                unlink($tempPath);
+            }
+        }
         $this->deletPartUploadInfo($uuid);
     }
 
@@ -372,15 +450,15 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
      * @param string      $name      文件域表单名
      * @param int         $blobIndex 当前分片下标。-1表示初始化，-2表示完成上传。
      * @param int|null    $blobCount 分片总数量，建议指定该参数。
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $ext       后缀名，不指定则根据MIME进行猜测。
      * @param string|null $uuid      唯一识别码，不指定则自动生成。
      * @return array
      */
-    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $extension = null, ?string $uuid = null): array
+    public function uploadLarge(string $name, int $blobIndex, ?int $blobCount = null, ?string $ext = null, ?string $uuid = null): array
     {
         // 特殊值-1：初始化
         if ($blobIndex == -1) {
-            $uuid = $this->uploadLargeInit($blobCount, $uuid);
+            $uuid = $this->uploadLargeInit($blobCount, null, $uuid);
             $info = $this->getPartUploadInfo($uuid);
             return $info;
         }
@@ -390,7 +468,7 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
             if (!$uuid) {
                 throw new RuntimeException('请指定参数uuid。');
             }
-            $info = $this->uploadLargeComplete($uuid, $extension);
+            $info = $this->uploadLargeComplete($uuid, null, $ext);
             return $info;
         }
 
@@ -400,7 +478,7 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
         }
         $info = $this->getPartUploadInfo($uuid);
         if (!$info) {
-            $this->uploadLargeInit($blobCount, $uuid);
+            $this->uploadLargeInit($blobCount, null, $uuid);
         }
 
         // 上传块
@@ -412,112 +490,43 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
         }
 
         // 完成上传
-        $info = $this->uploadLargeComplete($uuid, $extension);
+        $info = $this->uploadLargeComplete($uuid, null, $ext);
         return $info;
     }
 
     /**
      * 上传多个分块并合并成文件
-     * @param array       $parts     分块数组
-     * @param string|null $extension 后缀名，不指定则根据MIME进行猜测。
-     * @param string|null $uuid      唯一识别码，不指定则自动生成。
+     * @param array       $parts 分块数组
+     * @param string|null $ext   后缀名，不指定则根据MIME进行猜测。
+     * @param string|null $uuid  唯一识别码，不指定则自动生成。
      * @return array
      */
-    public function uploadParts(array $parts, ?string $extension = null, ?string $uuid = null): array
+    public function uploadParts(array $parts, ?string $ext = null, ?string $uuid = null): array
     {
         $blobCount = count($parts);
-        $uuid = $this->uploadLargeInit($blobCount, $uuid);
+        $uuid = $this->uploadLargeInit($blobCount, null, $uuid);
         foreach ($parts as $blobIndex => $content) {
             $this->uploadLargePart($uuid, $content, $blobIndex);
         }
-        $info = $this->uploadLargeComplete($uuid, $extension);
+        $info = $this->uploadLargeComplete($uuid, null, $ext);
         return $info;
-    }
-
-    /**
-     * 上传多个分块并合并成文件
-     *
-     * 参数 `$extension`：不指定则根据URL、MIME进行猜测
-     * 参数 `$type`：如[image,flash,audio,video,media,file]，指定该参数后保存路径以该参数开始。
-     * 参数 `$file_key`：指定该参数后，参数 $type 无效
-     * @param array       $parts     分块数组
-     * @param string|null $extension 后缀名
-     * @param string|null $type      指定类型
-     * @param string|null $file_key  文件路径标识
-     * @return array
-     */
-    public function uploadParts1(array $parts, string $extension = null, string $type = null, string $file_key = null): array
-    {
-        if (is_null($file_key)) {
-            if ($extension) {
-                $save_name = uniqid() . '.' . $extension;
-            } else {
-                $save_name = uniqid();
-            }
-            $sdir = $this->getSaveDir($type);
-            $file_key = $sdir . '/' . $save_name;
-        }
-
-        $this->uploadLargeInit($file_key, $type);
-        foreach ($parts as $part) {
-            $this->uploadLargePart($file_key, $part);
-        }
-        $this->uploadLargeComplete($file_key);
-
-        $resp = $this->obsClient->getObjectMetadata([
-            'Bucket' => $this->cfg['bucket'],
-            'Key'    => $file_key
-        ]);
-        $stat = $resp['Metadata'];
-
-        // 没指定后缀名的情况下进行后缀名猜测并重命名该文件
-        if (is_null($extension)) {
-            $extension = Fso::getExtensionFromMime($stat['mimeType']);
-            if ($extension) {
-                $old_file_key = $file_key;
-                $file_key = $file_key . '.' . $extension;
-                $this->obsClient->copyObject([
-                    'Bucket'     => $this->cfg['bucket'],
-                    'Key'        => $file_key,
-                    'CopySource' => $old_file_key
-                ]);
-                $this->obsClient->deleteObject([
-                    'Bucket' => $this->cfg['bucket'],
-                    'Key'    => $old_file_key
-                ]);
-            }
-        }
-
-        $domain = $this->cfg['domain'];
-        $url = $domain . '/' . $file_key;
-        $path = $file_key;
-
-        $data = [
-            'url'       => $url,
-            'path'      => $path,
-            'extension' => $extension,
-            'file_size' => $stat['fsize'],
-            'mime_type' => $stat['mimeType'],
-            'sha1'      => $stat['hash'],
-            'extend'    => $stat
-        ];
-        return $data;
     }
 
     /**
      * 返回已授权的预览URL
-     * @param string $url     原URL
+     * @param string $key     文件路径标识或完整URL
      * @param int    $expires 有效期(秒)，为0表示永久有效
      * @return string
      */
-    public function getAuthorizedUrl(string $url, int $expires = 0): string
+    public function getAuthorizedUrl(string $key, int $expires = 0): string
     {
+        $isUrl = preg_match('#^https?://#i', $key);
+        $url = $isUrl ? $key : rtrim($this->cfg['domain'], '/') . '/' . ltrim($key, '/');
+        $key = $isUrl ? rawurldecode(ltrim(parse_url($key, PHP_URL_PATH), '/')) : $key;
         if ($expires == 0) {
             $expires = 2592000;  // 最大支持30天
         }
         if ($this->cfg['private']) {
-            $key = parse_url($url, PHP_URL_PATH);
-            $key = substr($key, 1);  // 删除第一个【/】
             $resp = $this->obsClient->createSignedUrl([
                 'Method'  => 'GET',
                 'Bucket'  => $this->cfg['bucket'],
@@ -545,11 +554,15 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
         if (is_null($mime)) {
             throw new FileException($origName, '无法识别文件！');
         }
-        $extension = MIME::getExtensionByMime($mime);
-        if (empty($extension)) {
+        $ext = MIME::getExtensionByMime($mime);
+        if (empty($ext)) {
             throw new FileException($origName, '禁止上传无后缀名的文件');
         }
-        $this->checkExt($extension);
+        $this->checkExt($ext);
+
+        if (is_null($key)) {
+            $key = $this->generateKey(null, $ext);
+        }
 
         $size = $uploadFile->getSize();
         $tmpName = $uploadFile->getTmpName();
@@ -563,22 +576,24 @@ class HuaWei extends UploadHandlerAbstract implements UploadHandler
             'SourceFile' => $tmpName
         ]);
 
-        unlink($tmpName);
-        $path = str_replace(realpath($this->cfg['rootPath']), '', $key);
-        $url = $this->cfg['domain'] . $path;
+        if (!$uploadFile->isForTest()) {
+            unlink($tmpName);
+        }
+        $path = $key;
+        $url = rtrim($this->cfg['domain'], '/') . '/' . ltrim($key, '/');
         $data = [
-            'key'       => $key,                            // 文件路径标识
-            'name'      => $name,                           // 保存文件名
-            'path'      => $path,                           // WEB路径
-            'url'       => $url,                            // 完整URL
-            'size'      => $size,                           // 文件大小
-            'mime'      => $mime,                           // MIME类型
-            'extension' => $extension,                      // 后缀名
-            'sha1'      => $sha1,                           // 文件SHA1
+            'key'  => $key,                            // 文件路径标识
+            'name' => $name,                           // 保存文件名
+            'path' => $path,                           // WEB路径
+            'url'  => $url,                            // 完整URL
+            'size' => $size,                           // 文件大小
+            'mime' => $mime,                           // MIME类型
+            'ext'  => $ext,                            // 后缀名
+            'sha1' => $sha1,                           // 文件SHA1
 
             'dir'       => $dir,         // 生成路径
             'orig_name' => $origName,    // 原文件名
-            'extend'  => $resp,
+            'extend'    => $resp,
         ];
         return $data;
     }
